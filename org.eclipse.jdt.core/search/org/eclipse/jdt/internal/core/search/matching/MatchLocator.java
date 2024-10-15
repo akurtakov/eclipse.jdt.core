@@ -1459,7 +1459,11 @@ protected void locateMatchesWithASTParser(JavaProject javaProject, PossibleMatch
 			int level = possibleMatch.nodeSet.trustedASTNodeLevels.get(node);
 			SearchMatch match = toMatch(node, level, possibleMatch);
 			if( match != null && match.getElement() != null ) {
-				this.report(match);
+				try {
+					this.report(match);
+				} catch (CoreException ex) {
+					ILog.get().error(ex.getMessage(), ex);
+				}
 			}
 		}
 	}
