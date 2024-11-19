@@ -154,14 +154,6 @@ class JavadocConverter {
 		Javadoc res = this.ast.newJavadoc();
 		res.setSourceRange(this.initialOffset, this.endOffset - this.initialOffset);
 		try {
-			if( this.javacConverter.ast.apiLevel == AST.JLS2_INTERNAL) {
-				String rawContent = this.javacConverter.rawText.substring(this.initialOffset, this.endOffset);
-				try {
-					res.setComment(rawContent);
-				} catch( IllegalArgumentException iae) {
-					// Ignore
-				}
-			}
 			if (this.buildJavadoc) {
 				List<DCTree> treeElements = Stream.of(docComment.preamble, docComment.fullBody, docComment.postamble, docComment.tags)
 						.flatMap(List::stream).toList();
