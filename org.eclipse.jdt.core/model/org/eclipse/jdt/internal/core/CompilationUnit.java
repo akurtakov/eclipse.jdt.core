@@ -458,7 +458,7 @@ public void codeComplete(int offset, CompletionRequestor requestor, WorkingCopyO
 @Override
 public void codeComplete(int offset, CompletionRequestor requestor, WorkingCopyOwner workingCopyOwner, IProgressMonitor monitor) throws JavaModelException {
 	if (DOM_BASED_COMPLETION) {
-		new DOMCompletionEngine(offset, getOrBuildAST(workingCopyOwner), this, workingCopyOwner, requestor, monitor).run();
+		new DOMCompletionEngine(offset, getOrBuildAST(workingCopyOwner, offset), this, workingCopyOwner, requestor, monitor).run();
 		return;
 	}
 	codeComplete(
@@ -490,7 +490,7 @@ public IJavaElement[] codeSelect(int offset, int length, WorkingCopyOwner workin
 	}
 }
 
-public org.eclipse.jdt.core.dom.CompilationUnit getOrBuildAST(WorkingCopyOwner workingCopyOwner) throws JavaModelException {
+public org.eclipse.jdt.core.dom.CompilationUnit getOrBuildAST(WorkingCopyOwner workingCopyOwner, int focalPosition) throws JavaModelException {
 	if (this.ast != null) {
 		return this.ast;
 	}
@@ -505,7 +505,12 @@ public org.eclipse.jdt.core.dom.CompilationUnit getOrBuildAST(WorkingCopyOwner w
 	parser.setStatementsRecovery(true);
 	parser.setBindingsRecovery(true);
 	parser.setCompilerOptions(options);
+	parser.setFocalPosition(focalPosition);
 	if (parser.createAST(null) instanceof org.eclipse.jdt.core.dom.CompilationUnit newAST) {
+		if (focalPosition >= 0) {
+			// do not store
+			return newAST;
+		}
 		this.ast = newAST;
 	}
 	return this.ast;

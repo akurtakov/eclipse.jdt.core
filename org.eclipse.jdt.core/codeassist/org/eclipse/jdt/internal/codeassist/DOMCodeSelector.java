@@ -60,7 +60,7 @@ public class DOMCodeSelector {
 		if (offset + length > this.unit.getSource().length()) {
 			throw new JavaModelException(new IndexOutOfBoundsException(offset + length), IJavaModelStatusConstants.INDEX_OUT_OF_BOUNDS);
 		}
-		org.eclipse.jdt.core.dom.CompilationUnit currentAST = this.unit.getOrBuildAST(this.owner);
+		org.eclipse.jdt.core.dom.CompilationUnit currentAST = this.unit.getOrBuildAST(this.owner, this.unit.getBuffer().getLength() < 50000 ? -1 : offset);
 		if (currentAST == null) {
 			return new IJavaElement[0];
 		}
