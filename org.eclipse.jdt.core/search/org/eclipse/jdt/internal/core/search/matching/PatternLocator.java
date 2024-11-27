@@ -15,59 +15,26 @@ package org.eclipse.jdt.internal.core.search.matching;
 
 
 import java.util.regex.Pattern;
-
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.Signature;
 import org.eclipse.jdt.core.compiler.CharOperation;
-import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
-import org.eclipse.jdt.core.dom.ArrayType;
-import org.eclipse.jdt.core.dom.FieldAccess;
-import org.eclipse.jdt.core.dom.IBinding;
-import org.eclipse.jdt.core.dom.ITypeBinding;
-import org.eclipse.jdt.core.dom.MethodInvocation;
-import org.eclipse.jdt.core.dom.Name;
-import org.eclipse.jdt.core.dom.PrimitiveType;
-import org.eclipse.jdt.core.dom.QualifiedName;
-import org.eclipse.jdt.core.dom.QualifiedType;
-import org.eclipse.jdt.core.dom.SimpleName;
-import org.eclipse.jdt.core.dom.SimpleType;
-import org.eclipse.jdt.core.dom.Type;
-import org.eclipse.jdt.core.dom.VariableDeclaration;
+import org.eclipse.jdt.core.dom.*;
 import org.eclipse.jdt.core.search.SearchMatch;
 import org.eclipse.jdt.core.search.SearchPattern;
+import org.eclipse.jdt.internal.compiler.ast.*;
 import org.eclipse.jdt.internal.compiler.ast.ASTNode;
 import org.eclipse.jdt.internal.compiler.ast.Annotation;
-import org.eclipse.jdt.internal.compiler.ast.ConstructorDeclaration;
 import org.eclipse.jdt.internal.compiler.ast.Expression;
 import org.eclipse.jdt.internal.compiler.ast.FieldDeclaration;
-import org.eclipse.jdt.internal.compiler.ast.ImportReference;
 import org.eclipse.jdt.internal.compiler.ast.LambdaExpression;
-import org.eclipse.jdt.internal.compiler.ast.LocalDeclaration;
 import org.eclipse.jdt.internal.compiler.ast.MemberValuePair;
-import org.eclipse.jdt.internal.compiler.ast.MessageSend;
 import org.eclipse.jdt.internal.compiler.ast.MethodDeclaration;
 import org.eclipse.jdt.internal.compiler.ast.ModuleDeclaration;
-import org.eclipse.jdt.internal.compiler.ast.ModuleReference;
-import org.eclipse.jdt.internal.compiler.ast.QualifiedTypeReference;
-import org.eclipse.jdt.internal.compiler.ast.Reference;
-import org.eclipse.jdt.internal.compiler.ast.ReferenceExpression;
 import org.eclipse.jdt.internal.compiler.ast.TypeDeclaration;
 import org.eclipse.jdt.internal.compiler.ast.TypeParameter;
-import org.eclipse.jdt.internal.compiler.ast.TypeReference;
-import org.eclipse.jdt.internal.compiler.ast.Wildcard;
-import org.eclipse.jdt.internal.compiler.lookup.ArrayBinding;
-import org.eclipse.jdt.internal.compiler.lookup.BinaryTypeBinding;
-import org.eclipse.jdt.internal.compiler.lookup.Binding;
-import org.eclipse.jdt.internal.compiler.lookup.CaptureBinding;
-import org.eclipse.jdt.internal.compiler.lookup.IQualifiedTypeResolutionListener;
-import org.eclipse.jdt.internal.compiler.lookup.IntersectionTypeBinding18;
-import org.eclipse.jdt.internal.compiler.lookup.ParameterizedTypeBinding;
-import org.eclipse.jdt.internal.compiler.lookup.ReferenceBinding;
-import org.eclipse.jdt.internal.compiler.lookup.SourceTypeBinding;
+import org.eclipse.jdt.internal.compiler.lookup.*;
 import org.eclipse.jdt.internal.compiler.lookup.TypeBinding;
-import org.eclipse.jdt.internal.compiler.lookup.TypeVariableBinding;
-import org.eclipse.jdt.internal.compiler.lookup.WildcardBinding;
 import org.eclipse.jdt.internal.core.search.indexing.IIndexConstants;
 
 public abstract class PatternLocator implements IIndexConstants, IQualifiedTypeResolutionListener {
@@ -445,14 +412,25 @@ protected boolean matchesTypeReference(char[] pattern, TypeReference type) {
 
 	return matchesName(pattern, simpleName);
 }
+
+private Name getBaseTypeName(Type type) {
+	if( type instanceof SimpleType simp) {
+		return simp.getName();
+	}
+	if( type instanceof QualifiedType qn) {
+		return qn.getName();
+	}
+	if( type instanceof ArrayType arr) {
+		return getBaseTypeName(arr.getElementType());
+	}
+	return null;
+}
+
 protected boolean matchesTypeReference(char[] pattern, Type type, boolean isVarargs) {
 	if (pattern == null) return true; // null is as if it was "*"
 	if (type == null) return true; // treat as an inexact match
 
-	var name = type instanceof SimpleType simple ? simple.getName() :
-		type instanceof QualifiedType qualified ? qualified.getName() :
-		type instanceof ArrayType array ? array.getElementType() :
-		null;
+	var name = getBaseTypeName(type);
 	var simpleName = name instanceof SimpleName simple ? simple.getIdentifier() :
 		name instanceof QualifiedName qName ? qName.getName().getIdentifier() :
 		type instanceof PrimitiveType primitive ? primitive.getPrimitiveTypeCode().toString() :
@@ -542,7 +520,10 @@ protected void matchReportReference(ASTNode reference, IJavaElement element, IJa
 	matchReportReference(reference, element, elementBinding, accuracy, locator);
 }
 public SearchMatch newDeclarationMatch(ASTNode reference, IJavaElement element, Binding elementBinding, int accuracy, int length, MatchLocator locator) {
-    return locator.newDeclarationMatch(element, elementBinding, accuracy, reference.sourceStart, length);
+    return locator.newDeclarationMatch(element, elementBinding, accuracy, reference.sourceStart, length, true);
+}
+public SearchMatch newDeclarationMatch(ASTNode reference, IJavaElement element, Binding elementBinding, int accuracy, int length, MatchLocator locator, boolean overrideFromElement) {
+    return locator.newDeclarationMatch(element, elementBinding, accuracy, reference.sourceStart, length, overrideFromElement);
 }
 protected int referenceType() {
 	return 0; // defaults to unknown (a generic JavaSearchMatch will be created)
@@ -893,7 +874,9 @@ protected int resolveLevelForType(char[] simpleNamePattern, char[] qualification
 //	return resolveLevelForType(qualifiedPattern(simpleNamePattern, qualificationPattern), type);
 	char[] qualifiedPattern = getQualifiedPattern(simpleNamePattern, qualificationPattern);
 	int level = resolveLevelForType(qualifiedPattern, binding);
-	if (level == ACCURATE_MATCH || binding == null) return level;
+	if (level == ACCURATE_MATCH || binding == null)
+		return level;
+
 	ITypeBinding type = binding.isArray() ? binding.getComponentType() : binding;
 	char[] sourceName = null;
 	if (type.isMember() || type.isLocal()) {
@@ -905,7 +888,11 @@ protected int resolveLevelForType(char[] simpleNamePattern, char[] qualification
 	} else if (qualificationPattern == null) {
 		sourceName =  getQualifiedSourceName(binding).toCharArray();
 	}
-	if (sourceName == null) return IMPOSSIBLE_MATCH;
+	if (sourceName == null)
+		return IMPOSSIBLE_MATCH;
+	return resolveLevelForTypeSourceName(qualifiedPattern, sourceName, type);
+}
+protected int resolveLevelForTypeSourceName(char[] qualifiedPattern, char[] sourceName, ITypeBinding type) {
 	switch (this.matchMode) {
 		case SearchPattern.R_PREFIX_MATCH:
 			if (CharOperation.prefixEquals(qualifiedPattern, sourceName, this.isCaseSensitive)) {
@@ -930,6 +917,11 @@ protected int resolveLevelForType(char[] simpleNamePattern, char[] qualification
 			}
 			break;
 		default:
+			if( type != null && type.isLocal() ) {
+				if (CharOperation.prefixEquals(qualifiedPattern, sourceName, this.isCaseSensitive)) {
+					return ACCURATE_MATCH;
+				}
+			}
 			if (CharOperation.match(qualifiedPattern, sourceName, this.isCaseSensitive)) {
 				return ACCURATE_MATCH;
 			}
@@ -990,10 +982,12 @@ protected int resolveLevelForType(char[] qualifiedPattern, ITypeBinding type) {
 		return prev;
 	}
 	// NOTE: if case insensitive search then qualifiedPattern is assumed to be lowercase
-
-	return CharOperation.match(qualifiedPattern, type.getQualifiedName().toCharArray(), this.isCaseSensitive)
-		? ACCURATE_MATCH
-		: IMPOSSIBLE_MATCH;
+	char[] qualifiedNameFromBinding = type.getQualifiedName().toCharArray();
+	if( qualifiedNameFromBinding == null || qualifiedNameFromBinding.length == 0 ) {
+		qualifiedNameFromBinding = type.getName().toCharArray();
+	}
+	boolean match1 = CharOperation.match(qualifiedPattern, qualifiedNameFromBinding, this.isCaseSensitive);
+	return match1 ? ACCURATE_MATCH : IMPOSSIBLE_MATCH;
 }
 /* (non-Javadoc)
  * Resolve level for type with a given binding with all pattern information.
@@ -1180,7 +1174,7 @@ public void recordResolution(QualifiedTypeReference typeReference, TypeBinding r
 
 // AST DOM Variants
 
-public int match(org.eclipse.jdt.core.dom.Annotation node, MatchingNodeSet nodeSet) {
+public int match(org.eclipse.jdt.core.dom.Annotation node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
@@ -1189,66 +1183,66 @@ public int match(org.eclipse.jdt.core.dom.Annotation node, MatchingNodeSet nodeS
  * If it does, add it to the match set.
  * Returns the match level.
  */
-public int match(org.eclipse.jdt.core.dom.ASTNode node, MatchingNodeSet nodeSet) { // needed for some generic nodes
+public int match(org.eclipse.jdt.core.dom.ASTNode node, MatchingNodeSet nodeSet, MatchLocator locator) { // needed for some generic nodes
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(org.eclipse.jdt.core.dom.Expression node, MatchingNodeSet nodeSet) {
+public int match(org.eclipse.jdt.core.dom.Expression node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(org.eclipse.jdt.core.dom.FieldDeclaration node, MatchingNodeSet nodeSet) {
+public int match(org.eclipse.jdt.core.dom.FieldDeclaration node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(org.eclipse.jdt.core.dom.LambdaExpression node, MatchingNodeSet nodeSet) {
+public int match(org.eclipse.jdt.core.dom.LambdaExpression node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(VariableDeclaration node, MatchingNodeSet nodeSet) {
+public int match(VariableDeclaration node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(org.eclipse.jdt.core.dom.MethodDeclaration node, MatchingNodeSet nodeSet) {
+public int match(org.eclipse.jdt.core.dom.MethodDeclaration node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(org.eclipse.jdt.core.dom.MemberValuePair node, MatchingNodeSet nodeSet) {
+public int match(org.eclipse.jdt.core.dom.MemberValuePair node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(MethodInvocation node, MatchingNodeSet nodeSet) {
+public int match(MethodInvocation node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-protected int match(org.eclipse.jdt.core.dom.ModuleDeclaration node, MatchingNodeSet nodeSet) {
+protected int match(org.eclipse.jdt.core.dom.ModuleDeclaration node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	return IMPOSSIBLE_MATCH;
 }
-public int match(Name node, MatchingNodeSet nodeSet) {
+public int match(Name node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(FieldAccess node, MatchingNodeSet nodeSet) {
+public int match(FieldAccess node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(AbstractTypeDeclaration node, MatchingNodeSet nodeSet) {
+public int match(AbstractTypeDeclaration node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(org.eclipse.jdt.core.dom.TypeParameter node, MatchingNodeSet nodeSet) {
+public int match(org.eclipse.jdt.core.dom.TypeParameter node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int match(Type node, MatchingNodeSet nodeSet) {
+public int match(Type node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int resolveLevel(org.eclipse.jdt.core.dom.ASTNode node) {
+public int resolveLevel(org.eclipse.jdt.core.dom.ASTNode node, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }
-public int resolveLevel(IBinding binding) {
+public int resolveLevel(org.eclipse.jdt.core.dom.ASTNode node, IBinding binding, MatchLocator locator) {
 	// each subtype should override if needed
 	return IMPOSSIBLE_MATCH;
 }

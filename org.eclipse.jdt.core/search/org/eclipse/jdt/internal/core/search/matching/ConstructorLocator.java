@@ -14,7 +14,6 @@
 package org.eclipse.jdt.internal.core.search.matching;
 
 import java.util.List;
-
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.compiler.CharOperation;
@@ -82,7 +81,7 @@ public int match(ConstructorDeclaration node, MatchingNodeSet nodeSet) {
 	return nodeSet.addMatch(node, referencesLevel >= declarationsLevel ? referencesLevel : declarationsLevel); // use the stronger match
 }
 @Override
-public int match(MethodDeclaration node, MatchingNodeSet nodeSet) {
+public int match(MethodDeclaration node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	if (!node.isConstructor()) {
 		return IMPOSSIBLE_MATCH;
 	}
@@ -108,7 +107,7 @@ public int match(Expression node, MatchingNodeSet nodeSet) { // interested in Al
 	return nodeSet.addMatch(node, this.pattern.mustResolve ? POSSIBLE_MATCH : ACCURATE_MATCH);
 }
 @Override
-public int match(org.eclipse.jdt.core.dom.Expression node, MatchingNodeSet nodeSet) { // interested in AllocationExpression
+public int match(org.eclipse.jdt.core.dom.Expression node, MatchingNodeSet nodeSet, MatchLocator locator) { // interested in AllocationExpression
 	if (!this.pattern.findReferences) return IMPOSSIBLE_MATCH;
 	if (node instanceof CreationReference creationRef && (this.pattern.declaringSimpleName == null || matchesTypeReference(this.pattern.declaringSimpleName, creationRef.getType()))) {
 		return this.pattern.mustResolve ? POSSIBLE_MATCH : INACCURATE_MATCH;
@@ -121,7 +120,7 @@ public int match(org.eclipse.jdt.core.dom.Expression node, MatchingNodeSet nodeS
 	return IMPOSSIBLE_MATCH;
 }
 @Override
-public int match(org.eclipse.jdt.core.dom.ASTNode node, MatchingNodeSet nodeSet) {
+public int match(org.eclipse.jdt.core.dom.ASTNode node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	if (!this.pattern.findReferences) return IMPOSSIBLE_MATCH;
 	if (node instanceof SuperConstructorInvocation superRef) {
 		if (!matchParametersCount(node, superRef.arguments())) {
@@ -514,7 +513,7 @@ public int resolveLevel(Binding binding) {
 	return level;
 }
 @Override
-public int resolveLevel(IBinding binding) {
+public int resolveLevel(org.eclipse.jdt.core.dom.ASTNode node, IBinding binding, MatchLocator locator) {
 	if (binding instanceof IMethodBinding constructor) {
 		int level= matchConstructor(constructor);
 		if (level== IMPOSSIBLE_MATCH) {

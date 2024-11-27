@@ -13,65 +13,38 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core.search.matching;
 
+import static org.eclipse.jdt.internal.core.search.matching.DOMASTNodeUtils.insideDocComment;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.IMethod;
+import org.eclipse.jdt.core.ISourceRange;
+import org.eclipse.jdt.core.ISourceReference;
 import org.eclipse.jdt.core.IType;
+import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.compiler.CharOperation;
-import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
-import org.eclipse.jdt.core.dom.EnumConstantDeclaration;
-import org.eclipse.jdt.core.dom.EnumDeclaration;
-import org.eclipse.jdt.core.dom.IBinding;
-import org.eclipse.jdt.core.dom.ITypeBinding;
-import org.eclipse.jdt.core.dom.Name;
-import org.eclipse.jdt.core.dom.QualifiedName;
-import org.eclipse.jdt.core.dom.QualifiedType;
-import org.eclipse.jdt.core.dom.SimpleName;
-import org.eclipse.jdt.core.dom.SimpleType;
-import org.eclipse.jdt.core.dom.Type;
+import org.eclipse.jdt.core.dom.*;
+import org.eclipse.jdt.core.dom.BreakStatement;
+import org.eclipse.jdt.core.dom.LabeledStatement;
 import org.eclipse.jdt.core.search.IJavaSearchConstants;
 import org.eclipse.jdt.core.search.SearchMatch;
 import org.eclipse.jdt.core.search.SearchPattern;
 import org.eclipse.jdt.core.search.TypeDeclarationMatch;
 import org.eclipse.jdt.core.search.TypeReferenceMatch;
+import org.eclipse.jdt.internal.compiler.ast.*;
 import org.eclipse.jdt.internal.compiler.ast.ASTNode;
 import org.eclipse.jdt.internal.compiler.ast.Annotation;
-import org.eclipse.jdt.internal.compiler.ast.ArrayTypeReference;
 import org.eclipse.jdt.internal.compiler.ast.Expression;
-import org.eclipse.jdt.internal.compiler.ast.ImportReference;
-import org.eclipse.jdt.internal.compiler.ast.NameReference;
-import org.eclipse.jdt.internal.compiler.ast.ParameterizedQualifiedTypeReference;
-import org.eclipse.jdt.internal.compiler.ast.ParameterizedSingleTypeReference;
-import org.eclipse.jdt.internal.compiler.ast.QualifiedNameReference;
-import org.eclipse.jdt.internal.compiler.ast.QualifiedTypeReference;
-import org.eclipse.jdt.internal.compiler.ast.Reference;
-import org.eclipse.jdt.internal.compiler.ast.SingleNameReference;
-import org.eclipse.jdt.internal.compiler.ast.SingleTypeReference;
 import org.eclipse.jdt.internal.compiler.ast.TypeDeclaration;
-import org.eclipse.jdt.internal.compiler.ast.TypeReference;
 import org.eclipse.jdt.internal.compiler.env.IBinaryType;
-import org.eclipse.jdt.internal.compiler.lookup.ArrayBinding;
-import org.eclipse.jdt.internal.compiler.lookup.BaseTypeBinding;
-import org.eclipse.jdt.internal.compiler.lookup.Binding;
-import org.eclipse.jdt.internal.compiler.lookup.ClassScope;
-import org.eclipse.jdt.internal.compiler.lookup.FieldBinding;
-import org.eclipse.jdt.internal.compiler.lookup.LocalTypeBinding;
-import org.eclipse.jdt.internal.compiler.lookup.MemberTypeBinding;
+import org.eclipse.jdt.internal.compiler.lookup.*;
 import org.eclipse.jdt.internal.compiler.lookup.MethodBinding;
-import org.eclipse.jdt.internal.compiler.lookup.ParameterizedTypeBinding;
-import org.eclipse.jdt.internal.compiler.lookup.ProblemBinding;
-import org.eclipse.jdt.internal.compiler.lookup.ProblemFieldBinding;
-import org.eclipse.jdt.internal.compiler.lookup.ProblemReferenceBinding;
-import org.eclipse.jdt.internal.compiler.lookup.ReferenceBinding;
-import org.eclipse.jdt.internal.compiler.lookup.SourceTypeBinding;
 import org.eclipse.jdt.internal.compiler.lookup.TypeBinding;
-import org.eclipse.jdt.internal.compiler.lookup.TypeVariableBinding;
 import org.eclipse.jdt.internal.compiler.lookup.VariableBinding;
 import org.eclipse.jdt.internal.compiler.util.SimpleSet;
 import org.eclipse.jdt.internal.core.JavaElement;
@@ -83,6 +56,7 @@ protected final boolean isDeclarationOfReferencedTypesPattern;
 
 private final int fineGrain;
 private final Map<QualifiedTypeReference, List<TypeBinding>> recordedResolutions = new HashMap<>();
+private List<IJavaElement> foundElements = new ArrayList<>();
 
 public TypeReferenceLocator(TypeReferencePattern pattern) {
 
@@ -115,8 +89,8 @@ public int match(Annotation node, MatchingNodeSet nodeSet) {
 	return match(node.type, nodeSet);
 }
 @Override
-public int match(org.eclipse.jdt.core.dom.Annotation node, MatchingNodeSet nodeSet) {
-	return match(node.getTypeName(), nodeSet);
+public int match(org.eclipse.jdt.core.dom.Annotation node, MatchingNodeSet nodeSet, MatchLocator locator) {
+	return match(node.getTypeName(), nodeSet, locator);
 }
 @Override
 public int match(ASTNode node, MatchingNodeSet nodeSet) { // interested in ImportReference
@@ -149,16 +123,69 @@ public int match(Reference node, MatchingNodeSet nodeSet) { // interested in Nam
 	return IMPOSSIBLE_MATCH;
 }
 @Override
-public int match(Name name, MatchingNodeSet nodeSet) {
+public int match(Name name, MatchingNodeSet nodeSet, MatchLocator locator) {
 	if (name.getParent() instanceof AbstractTypeDeclaration) {
+		return IMPOSSIBLE_MATCH;
+	}
+	if( name.getParent() instanceof LabeledStatement ls && ls.getLabel() == name) {
+		return IMPOSSIBLE_MATCH;
+	}
+	if( name.getParent() instanceof BreakStatement bs && bs.getLabel() == name) {
 		return IMPOSSIBLE_MATCH;
 	}
 	if (this.pattern.simpleName == null) {
 		return nodeSet.addMatch(name, this.pattern.mustResolve ? POSSIBLE_MATCH : ACCURATE_MATCH);
 	}
-	String simpleName = name instanceof SimpleName sname ? sname.getIdentifier() :
-		name instanceof QualifiedName qname ? qname.getName().getIdentifier() :
-		null;
+	if( name instanceof SimpleName sn2 ) {
+		if( this.pattern.qualification == null)
+			return match(sn2, nodeSet);
+		// searching for a qualified name but we are only simple
+		org.eclipse.jdt.core.dom.ASTNode parent3 = name.getParent();
+		if( !(parent3 instanceof QualifiedName)) {
+			return match(sn2, nodeSet);
+		}
+		// Parent is a qualified name and we didn't match it...
+		// so we know the whole name was a failed match, but...
+		if( parent3 instanceof QualifiedName qn3 && qn3.getQualifier() == name) {
+			// Maybe the qualifier is the type we're looking for
+			if( match(sn2, nodeSet) == POSSIBLE_MATCH) {
+				return POSSIBLE_MATCH;
+			}
+		}
+
+		if( this.pattern.getMatchMode() == SearchPattern.R_EXACT_MATCH) {
+			return IMPOSSIBLE_MATCH;
+		}
+		if( match(sn2, nodeSet) == POSSIBLE_MATCH) {
+			return POSSIBLE_MATCH;
+		}
+		return IMPOSSIBLE_MATCH;
+	}
+	if( name instanceof QualifiedName qn2 ) {
+		return match(qn2, nodeSet);
+	}
+	return IMPOSSIBLE_MATCH;
+}
+
+public int match(SimpleName name, MatchingNodeSet nodeSet) {
+	String simpleName = name.getIdentifier();
+	return simpleName != null && matchesName(this.pattern.simpleName, simpleName.toCharArray()) ?
+		POSSIBLE_MATCH : IMPOSSIBLE_MATCH;
+}
+public int match(QualifiedName name, MatchingNodeSet nodeSet) {
+	String simpleName = name.getName().getIdentifier();
+	String qualifier = name.getQualifier().toString();
+	if( this.pattern.qualification == null ) {
+		// Return an impossible match here, because we are not seeking a qualifier.
+		// The SimpleName node should be the one to respond.
+		return IMPOSSIBLE_MATCH;
+	}
+	if( qualifier != null) {
+		String desiredQualifier = new String(this.pattern.qualification);
+		if( !qualifier.equals(desiredQualifier)) {
+			return IMPOSSIBLE_MATCH;
+		}
+	}
 	return simpleName != null && matchesName(this.pattern.simpleName, simpleName.toCharArray()) ?
 		POSSIBLE_MATCH : IMPOSSIBLE_MATCH;
 }
@@ -181,7 +208,7 @@ public int match(TypeReference node, MatchingNodeSet nodeSet) {
 	return IMPOSSIBLE_MATCH;
 }
 @Override
-public int match(org.eclipse.jdt.core.dom.ASTNode node, MatchingNodeSet nodeSet) {
+public int match(org.eclipse.jdt.core.dom.ASTNode node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	if (node instanceof EnumConstantDeclaration enumConstantDecl
 		&& node.getParent() instanceof EnumDeclaration enumDeclaration
 		&& enumConstantDecl.getAnonymousClassDeclaration() != null) {
@@ -195,10 +222,10 @@ public int match(org.eclipse.jdt.core.dom.ASTNode node, MatchingNodeSet nodeSet)
 	return IMPOSSIBLE_MATCH;
 }
 @Override
-public int match(Type node, MatchingNodeSet nodeSet) {
+public int match(Type node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	if (this.pattern.simpleName == null)
 		return nodeSet.addMatch(node, this.pattern.mustResolve ? POSSIBLE_MATCH : ACCURATE_MATCH);
-
+	String qualifiedName = null;
 	String simpleName = null;
 	if (node instanceof SimpleType simple) {
 		if (simple.getName() instanceof SimpleName name) {
@@ -206,11 +233,20 @@ public int match(Type node, MatchingNodeSet nodeSet) {
 		}
 		if (simple.getName() instanceof QualifiedName name) {
 			simpleName = name.getName().getIdentifier();
+			qualifiedName = name.getFullyQualifiedName();
 		}
 	} else if (node instanceof QualifiedType qualified) {
 		simpleName = qualified.getName().getIdentifier();
+		qualifiedName = qualified.getName().getFullyQualifiedName();
 	}
-	if (simpleName != null && matchesName(this.pattern.simpleName, simpleName.toCharArray())) {
+	if( qualifiedName != null && this.pattern.qualification != null) {
+		// we have a qualified name in the node, and our pattern is searching for a qualified name
+		char[] patternQualified = (new String(this.pattern.qualification) + "." + new String(this.pattern.simpleName)).toCharArray();
+		char[] found = qualifiedName.toCharArray();
+		if( matchesName(patternQualified, found)) {
+			return nodeSet.addMatch(node, this.pattern.mustResolve ? POSSIBLE_MATCH : ACCURATE_MATCH);
+		}
+	} else if (simpleName != null && matchesName(this.pattern.simpleName, simpleName.toCharArray())) {
 		return nodeSet.addMatch(node, this.pattern.mustResolve || this.pattern.qualification == null ? POSSIBLE_MATCH : ACCURATE_MATCH);
 	}
 	return IMPOSSIBLE_MATCH;
@@ -980,14 +1016,143 @@ public void recordResolution(QualifiedTypeReference typeReference, TypeBinding r
 public String toString() {
 	return "Locator for " + this.pattern.toString(); //$NON-NLS-1$
 }
+
+private boolean hasPackageDeclarationAncestor(org.eclipse.jdt.core.dom.ASTNode node) {
+	if( node instanceof PackageDeclaration) {
+		return true;
+	}
+	return node == null ? false : hasPackageDeclarationAncestor(node.getParent());
+}
+
 @Override
-public int resolveLevel(IBinding binding) {
+public int resolveLevel(org.eclipse.jdt.core.dom.ASTNode node, IBinding binding, MatchLocator locator) {
 	if (binding == null) {
+		if( node instanceof SimpleName sn) {
+			int accuracy = resolveLevelForSimpleName(node, sn.getIdentifier());
+			if( accuracy != -1 ) {
+				// Add directly
+				IResource r = null;
+				IJavaElement enclosing = DOMASTNodeUtils.getEnclosingJavaElement(node);
+				IJavaElement ancestor = enclosing == null ? null : enclosing.getAncestor(IJavaElement.COMPILATION_UNIT);
+				try {
+					r = ancestor == null ? null : ancestor.getCorrespondingResource();
+				} catch(JavaModelException jme) {
+					// ignore
+				}
+
+				TypeReferenceMatch typeMatch = new TypeReferenceMatch(enclosing, accuracy, node.getStartPosition(), node.getLength(), insideDocComment(node), locator.getParticipant(), r);
+				try {
+					locator.report(typeMatch);
+				} catch(CoreException ce) {
+					// ignore
+				}
+				// Then return not possible so it doesn't get added again
+				return IMPOSSIBLE_MATCH;
+			}
+		}
 		return INACCURATE_MATCH;
 	}
 	if (binding instanceof ITypeBinding typeBinding) {
-		return resolveLevelForType(this.pattern.simpleName, this.pattern.qualification, typeBinding);
+		return resolveLevelForTypeBinding(node, typeBinding, locator);
+	}
+	if( binding instanceof IPackageBinding && node instanceof SimpleName sn) {
+		// var x = (B36479.C)val;
+		// might interpret the B36479 to be a package and C a type,
+		// rather than B36479 to be a type and C to be an inner-type
+		if( this.isDeclarationOfReferencedTypesPattern) {
+			return IMPOSSIBLE_MATCH;
+		}
+		if( hasPackageDeclarationAncestor(node)) {
+			return IMPOSSIBLE_MATCH;
+		}
+		String identifier = sn.getIdentifier();
+		if( matchesName(this.pattern.simpleName, identifier.toCharArray())) {
+			return INACCURATE_MATCH;
+		}
+
 	}
 	return IMPOSSIBLE_MATCH;
 }
+
+/*
+ * Returns a match flag OR -1 if it cannot determine at all.
+ */
+private int resolveLevelForSimpleName(org.eclipse.jdt.core.dom.ASTNode node, String simpleNameNeedle) {
+	if( !simpleNameNeedle.contains(".") && this.pattern.qualification != null && this.pattern.qualification.length > 0 ) { //$NON-NLS-1$
+		// we need to find out if we import this thing at all
+		org.eclipse.jdt.core.dom.CompilationUnit cu = findCU(node);
+		List imports = cu.imports();
+		for( Object id : imports) {
+			ImportDeclaration idd = (ImportDeclaration)id;
+			if( idd.getName() instanceof QualifiedName qn) {
+				if( qn.getName().toString().equals(simpleNameNeedle)) {
+					char[] qualifiedPattern = getQualifiedPattern(this.pattern.simpleName, this.pattern.qualification);
+					// we were imported as qualified name...
+					int level3 = resolveLevelForTypeSourceName(qualifiedPattern, qn.toString().toCharArray(), null);
+					if( level3 == ACCURATE_MATCH ) {
+						return INACCURATE_MATCH;
+					}
+					return INACCURATE_MATCH;
+				}
+			}
+		}
+	}
+	return -1;
+}
+
+private int resolveLevelForTypeBinding(org.eclipse.jdt.core.dom.ASTNode node, ITypeBinding typeBinding,
+		MatchLocator locator) {
+	int newLevel = resolveLevelForType(this.pattern.simpleName, this.pattern.qualification, typeBinding);
+	if( newLevel == IMPOSSIBLE_MATCH ) {
+		String qualNameFromBinding = typeBinding.getQualifiedName();
+		int simpleNameMatch = resolveLevelForSimpleName(node, qualNameFromBinding);
+		if( simpleNameMatch != -1 ) {
+			return simpleNameMatch;
+		}
+	}
+	if( this.isDeclarationOfReferencedTypesPattern) {
+		IJavaElement enclosing = ((DeclarationOfReferencedTypesPattern)this.pattern).enclosingElement;
+		// We don't add this node. We manually add the declaration
+		ITypeBinding t2 = typeBinding.getTypeDeclaration();
+		IJavaElement je = t2 == null ? null : t2.getJavaElement();
+		if( je != null && !this.foundElements.contains(je) && DOMASTNodeUtils.isWithinRange(node, enclosing)) {
+			ISourceReference sr = je instanceof ISourceReference ? (ISourceReference)je : null;
+			IResource r = null;
+			ISourceRange srg = null;
+			ISourceRange nameRange = null;
+			try {
+				srg = sr.getSourceRange();
+				nameRange = sr.getNameRange();
+				IJavaElement ancestor = je.getAncestor(IJavaElement.COMPILATION_UNIT);
+				r = ancestor == null ? null : ancestor.getCorrespondingResource();
+			} catch(JavaModelException jme) {
+				// ignore
+			}
+			ISourceRange rangeToUse = (nameRange == null) ? srg : nameRange;
+			if( rangeToUse != null ) {
+				TypeDeclarationMatch tdm = new TypeDeclarationMatch(je, newLevel,
+						rangeToUse.getOffset(), rangeToUse.getLength(),
+						locator.getParticipant(), r);
+				try {
+					this.foundElements.add(je);
+					locator.report(tdm);
+				} catch(CoreException ce) {
+					// ignore
+				}
+			}
+		}
+		return IMPOSSIBLE_MATCH;
+	}
+	return newLevel;
+}
+
+private org.eclipse.jdt.core.dom.CompilationUnit findCU(org.eclipse.jdt.core.dom.ASTNode node) {
+	if( node == null )
+		return null;
+	if( node instanceof org.eclipse.jdt.core.dom.CompilationUnit cu) {
+		return cu;
+	}
+	return findCU(node.getParent());
+}
+
 }

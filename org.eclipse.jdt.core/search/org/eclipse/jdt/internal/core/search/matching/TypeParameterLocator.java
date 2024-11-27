@@ -14,6 +14,9 @@
 package org.eclipse.jdt.internal.core.search.matching;
 
 import org.eclipse.jdt.core.IJavaElement;
+import org.eclipse.jdt.core.ISourceRange;
+import org.eclipse.jdt.core.ISourceReference;
+import org.eclipse.jdt.core.JavaModelException;
 import org.eclipse.jdt.core.dom.IBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.SimpleType;
@@ -56,13 +59,30 @@ public class TypeParameterLocator extends PatternLocator {
 		return IMPOSSIBLE_MATCH;
 	}
 	@Override
-	public int match(Type node, MatchingNodeSet nodeSet) {
+	public int match(Type node, MatchingNodeSet nodeSet, MatchLocator locator) {
 		if (this.pattern.findReferences) {
 			if (node instanceof SimpleType simple) { // Type parameter cannot be qualified
 				if (matchesName(this.pattern.name, simple.getName().toString().toCharArray())) {
 					int level = this.pattern.mustResolve ? POSSIBLE_MATCH : ACCURATE_MATCH;
 					return nodeSet.addMatch(node, level);
 				}
+			}
+		}
+		return IMPOSSIBLE_MATCH;
+	}
+
+	@Override
+	public int match(org.eclipse.jdt.core.dom.TypeParameter node, MatchingNodeSet nodeSet, MatchLocator locator) {
+		if (this.pattern.findReferences) {
+			if (matchesName(this.pattern.name, node.getName().toString().toCharArray())) {
+				int level = this.pattern.mustResolve ? POSSIBLE_MATCH : ACCURATE_MATCH;
+				return nodeSet.addMatch(node, level);
+			}
+		}
+		if (this.pattern.findDeclarations) {
+			if (matchesName(this.pattern.name, node.getName().toString().toCharArray())) {
+				int level = this.pattern.mustResolve ? POSSIBLE_MATCH : ACCURATE_MATCH;
+				return nodeSet.addMatch(node, level);
 			}
 		}
 		return IMPOSSIBLE_MATCH;
@@ -135,8 +155,9 @@ public class TypeParameterLocator extends PatternLocator {
 				if (methBinding.getParameterTypes() == null) {
 					if (length == 0) return ACCURATE_MATCH;
 				} else if (methBinding.getParameterTypes().length == length){
+					ITypeBinding[] p = methBinding.getParameterTypes();
 					for (int i=0; i<length; i++) {
-						if (!matchesName(methBinding.getParameterTypes()[i].getName().toCharArray(), this.pattern.methodArgumentTypes[i])) {
+						if (!matchesName(this.pattern.methodArgumentTypes[i], p[i].getName().toCharArray())) {
 							return IMPOSSIBLE_MATCH;
 						}
 					}
@@ -187,11 +208,39 @@ public class TypeParameterLocator extends PatternLocator {
 		return matchTypeParameter((TypeVariableBinding) binding, true);
 	}
 	@Override
-	public int resolveLevel(IBinding binding) {
+	public int resolveLevel(org.eclipse.jdt.core.dom.ASTNode node, IBinding binding, MatchLocator locator) {
 		if (binding == null) return INACCURATE_MATCH;
 		if (!(binding instanceof ITypeBinding)) return IMPOSSIBLE_MATCH;
+		ITypeBinding tb = (ITypeBinding)binding;
+		int ret = matchTypeParameter(tb, true);
+		if( ret == ACCURATE_MATCH) {
+			if( !this.pattern.findDeclarations && nodeSourceRangeMatchesElement(node, this.pattern.focus)) {
+				return IMPOSSIBLE_MATCH;
+			}
+		}
+		return ret;
+	}
 
-		return matchTypeParameter((ITypeBinding) binding, true);
+	private static boolean nodeSourceRangeMatchesElement(org.eclipse.jdt.core.dom.ASTNode node, IJavaElement focus) {
+		if( focus == null )
+			return false;
+
+		ISourceRange sr = null;
+		try {
+			if( focus instanceof ISourceReference isr2) {
+				sr = isr2.getSourceRange();
+			}
+		} catch(JavaModelException jme3) {
+			// ignore
+		}
+
+		if( sr == null )
+			return false;
+
+		if( sr.getOffset() == node.getStartPosition() && sr.getLength() == node.getLength()) {
+			return true;
+		}
+		return false;
 	}
 
 	@Override

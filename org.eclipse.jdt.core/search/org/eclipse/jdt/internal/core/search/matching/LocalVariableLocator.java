@@ -14,7 +14,6 @@
 package org.eclipse.jdt.internal.core.search.matching;
 
 import java.util.Objects;
-
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.jdt.core.IJavaElement;
 import org.eclipse.jdt.core.dom.ChildPropertyDescriptor;
@@ -61,7 +60,7 @@ public int match(LocalDeclaration node, MatchingNodeSet nodeSet) {
 	return nodeSet.addMatch(node, referencesLevel >= declarationsLevel ? referencesLevel : declarationsLevel); // use the stronger match
 }
 @Override
-public int match(VariableDeclaration node, MatchingNodeSet nodeSet) {
+public int match(VariableDeclaration node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	int referencesLevel = IMPOSSIBLE_MATCH;
 	if (this.pattern.findReferences)
 		// must be a write only access with an initializer
@@ -115,7 +114,7 @@ protected void matchReportReference(ASTNode reference, IJavaElement element, Bin
 	}
 }
 @Override
-public int match(Name node, MatchingNodeSet nodeSet) {
+public int match(Name node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	if (node.getLocationInParent() instanceof ChildPropertyDescriptor descriptor
 		&& (descriptor.getChildType() == Expression.class // local variable refs are either expressions as children
 			|| descriptor == QualifiedName.QUALIFIER_PROPERTY) // or dereferenced names
@@ -177,7 +176,7 @@ public int resolveLevel(Binding binding) {
 	return matchLocalVariable((LocalVariableBinding) binding, true);
 }
 @Override
-public int resolveLevel(IBinding binding) {
+public int resolveLevel(org.eclipse.jdt.core.dom.ASTNode node, IBinding binding, MatchLocator locator) {
 	if (!(binding instanceof IVariableBinding)) {
 		return IMPOSSIBLE_MATCH;
 	}

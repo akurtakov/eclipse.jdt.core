@@ -68,7 +68,7 @@ public int match(TypeDeclaration node, MatchingNodeSet nodeSet) {
 	return IMPOSSIBLE_MATCH;
 }
 @Override
-public int match(AbstractTypeDeclaration node, MatchingNodeSet nodeSet) {
+public int match(AbstractTypeDeclaration node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	if (this.pattern.simpleName == null || matchesName(this.pattern.simpleName, node.getName().getIdentifier().toCharArray()))
 		return nodeSet.addMatch(node, this.pattern.mustResolve ? POSSIBLE_MATCH : ACCURATE_MATCH);
 
@@ -127,7 +127,7 @@ public int resolveLevel(Binding binding) {
 	}
 }
 @Override
-public int resolveLevel(IBinding binding) {
+public int resolveLevel(org.eclipse.jdt.core.dom.ASTNode node, IBinding binding, MatchLocator locator) {
 	if (binding == null) return INACCURATE_MATCH;
 	if (!(binding instanceof ITypeBinding)) return IMPOSSIBLE_MATCH;
 

@@ -56,7 +56,7 @@ public int match(LambdaExpression node, MatchingNodeSet nodeSet) {
 	return nodeSet.addMatch(node, POSSIBLE_MATCH);
 }
 @Override
-public int match(org.eclipse.jdt.core.dom.LambdaExpression node, MatchingNodeSet nodeSet) {
+public int match(org.eclipse.jdt.core.dom.LambdaExpression node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	if (this.pattern.superRefKind != SuperTypeReferencePattern.ONLY_SUPER_INTERFACES)
 		return IMPOSSIBLE_MATCH;
 	nodeSet.mustResolve = true;
@@ -85,7 +85,7 @@ public int match(TypeReference node, MatchingNodeSet nodeSet) {
 	return IMPOSSIBLE_MATCH;
 }
 @Override
-public int match(Type node, MatchingNodeSet nodeSet) {
+public int match(Type node, MatchingNodeSet nodeSet, MatchLocator locator) {
 	if (this.flavors != SUPERTYPE_REF_FLAVOR) return IMPOSSIBLE_MATCH;
 	if (this.pattern.superSimpleName == null)
 		return nodeSet.addMatch(node, this.pattern.mustResolve ? POSSIBLE_MATCH : ACCURATE_MATCH);
@@ -176,7 +176,7 @@ public int resolveLevel(Binding binding) {
 	return level;
 }
 @Override
-public int resolveLevel(IBinding binding) {
+public int resolveLevel(org.eclipse.jdt.core.dom.ASTNode node, IBinding binding, MatchLocator locator) {
 	if (binding == null) return INACCURATE_MATCH;
 	if (!(binding instanceof ITypeBinding)) return IMPOSSIBLE_MATCH;
 

@@ -10,33 +10,8 @@
  *******************************************************************************/
 package org.eclipse.jdt.internal.core.search.matching;
 
-import org.eclipse.jdt.core.dom.ASTVisitor;
-import org.eclipse.jdt.core.dom.AbstractTypeDeclaration;
-import org.eclipse.jdt.core.dom.AnnotationTypeDeclaration;
-import org.eclipse.jdt.core.dom.AnonymousClassDeclaration;
-import org.eclipse.jdt.core.dom.ClassInstanceCreation;
-import org.eclipse.jdt.core.dom.CreationReference;
-import org.eclipse.jdt.core.dom.EnumConstantDeclaration;
-import org.eclipse.jdt.core.dom.EnumDeclaration;
-import org.eclipse.jdt.core.dom.ExpressionMethodReference;
-import org.eclipse.jdt.core.dom.IntersectionType;
-import org.eclipse.jdt.core.dom.MethodDeclaration;
-import org.eclipse.jdt.core.dom.MethodInvocation;
-import org.eclipse.jdt.core.dom.NameQualifiedType;
-import org.eclipse.jdt.core.dom.ParameterizedType;
-import org.eclipse.jdt.core.dom.QualifiedName;
-import org.eclipse.jdt.core.dom.QualifiedType;
-import org.eclipse.jdt.core.dom.RecordDeclaration;
-import org.eclipse.jdt.core.dom.SimpleName;
-import org.eclipse.jdt.core.dom.SimpleType;
-import org.eclipse.jdt.core.dom.SingleVariableDeclaration;
-import org.eclipse.jdt.core.dom.SuperConstructorInvocation;
-import org.eclipse.jdt.core.dom.SuperMethodInvocation;
-import org.eclipse.jdt.core.dom.SuperMethodReference;
-import org.eclipse.jdt.core.dom.Type;
-import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.eclipse.jdt.core.dom.UnionType;
-import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
+import java.util.function.Function;
+import org.eclipse.jdt.core.dom.*;
 
 /**
  * Visits an AST to feel the possible match with nodes
@@ -45,76 +20,64 @@ class PatternLocatorVisitor extends ASTVisitor {
 
 	private final PatternLocator patternLocator;
 	private final MatchingNodeSet nodeSet;
+	private MatchLocator locator;
 
-	public PatternLocatorVisitor(PatternLocator patternLocator, MatchingNodeSet nodeSet) {
+	public PatternLocatorVisitor(PatternLocator patternLocator, MatchingNodeSet nodeSet, MatchLocator locator) {
 		super(true);
 		this.patternLocator = patternLocator;
 		this.nodeSet = nodeSet;
+		this.locator = locator;
 	}
+
+	private <T extends ASTNode> boolean defaultVisitImplementation(T node, Function<T, Integer> levelFunc) {
+		return defaultVisitImplementationWithFunc(node, levelFunc, DOMASTNodeUtils::getBinding);
+	}
+
+	private <T extends ASTNode> boolean defaultVisitImplementationWithFunc(
+			T node,
+			Function<T, Integer> levelFunc,
+			Function<T, IBinding> bindingFunc) {
+		int level = levelFunc.apply(node);
+		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
+			level = this.patternLocator.resolveLevel(node, bindingFunc.apply(node), this.locator);
+		}
+		this.nodeSet.addMatch(node, level);
+		return true;
+
+	}
+
 
 	@Override
 	public boolean visit(AnnotationTypeDeclaration node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
-
+	@Override
+	public boolean visit(TypeParameter node) {
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
+	}
 	@Override
 	public boolean visit(MethodDeclaration node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(MethodInvocation node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveMethodBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(ExpressionMethodReference node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveMethodBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(SuperMethodReference node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveMethodBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(SuperMethodInvocation node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveMethodBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 
 	private boolean visitAbstractTypeDeclaration(AbstractTypeDeclaration node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(EnumDeclaration node) {
@@ -130,25 +93,24 @@ class PatternLocatorVisitor extends ASTVisitor {
 	}
 	@Override
 	public boolean visit(AnonymousClassDeclaration node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 
 	private boolean visitType(Type node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(SimpleType type) {
 		visitType(type);
+		Name n = type.getName();
+		if( n instanceof QualifiedName qn ) {
+			Name qualifier = qn.getQualifier();
+			if( qualifier instanceof SimpleName sn1 ) {
+				visit(sn1);
+			} else if( qualifier instanceof QualifiedName qn1) {
+				visit(qn1);
+			}
+		}
 		return false; // No need to visit single name child
 	}
 	@Override
@@ -173,34 +135,19 @@ class PatternLocatorVisitor extends ASTVisitor {
 	}
 	@Override
 	public boolean visit(ClassInstanceCreation node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveConstructorBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(CreationReference node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveMethodBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(SuperConstructorInvocation node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveConstructorBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(SimpleName node) {
-		if (node.getLocationInParent() == QualifiedName.NAME_PROPERTY ||
+		if (
 			node.getLocationInParent() == VariableDeclarationFragment.NAME_PROPERTY ||
 			node.getLocationInParent() == SingleVariableDeclaration.NAME_PROPERTY ||
 			node.getLocationInParent() == TypeDeclaration.NAME_PROPERTY ||
@@ -208,36 +155,29 @@ class PatternLocatorVisitor extends ASTVisitor {
 			node.getLocationInParent() == MethodDeclaration.NAME_PROPERTY) {
 			return false; // skip as parent was most likely already matched
 		}
-		int level = this.patternLocator.match(node, this.nodeSet);
+		int level = this.patternLocator.match(node, this.nodeSet, this.locator);
 		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveBinding());
+			IBinding b = node.resolveBinding();
+			level = this.patternLocator.resolveLevel(node, b, this.locator);
 		}
 		this.nodeSet.addMatch(node, level);
-		return true;
+		return level == 0;
 	}
 	@Override
 	public boolean visit(VariableDeclarationFragment node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(SingleVariableDeclaration node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
-		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveBinding());
-		}
-		this.nodeSet.addMatch(node, level);
-		return true;
+		return defaultVisitImplementation(node, x -> this.patternLocator.match(node, this.nodeSet, this.locator));
 	}
 	@Override
 	public boolean visit(EnumConstantDeclaration node) {
-		int level = this.patternLocator.match(node, this.nodeSet);
+		int level = this.patternLocator.match(node, this.nodeSet, this.locator);
 		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = Math.max(this.patternLocator.resolveLevel(node.resolveVariable()), this.patternLocator.resolveLevel(node.resolveConstructorBinding()));
+			int l1 = this.patternLocator.resolveLevel(node, node.resolveVariable(), this.locator);
+			int l2 = this.patternLocator.resolveLevel(node, node.resolveConstructorBinding(), this.locator);
+			level = Math.max(l1, l2);
 		}
 		this.nodeSet.addMatch(node, level);
 		return true;
@@ -247,11 +187,19 @@ class PatternLocatorVisitor extends ASTVisitor {
 		if (node.getLocationInParent() == SimpleType.NAME_PROPERTY) {
 			return false; // type was already checked
 		}
-		int level = this.patternLocator.match(node, this.nodeSet);
+		int level = this.patternLocator.match(node, this.nodeSet, this.locator);
 		if ((level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.POSSIBLE_MATCH && (this.nodeSet.mustResolve || this.patternLocator.mustResolve)) {
-			level = this.patternLocator.resolveLevel(node.resolveBinding());
+			level = this.patternLocator.resolveLevel(node, node.resolveBinding(), this.locator);
 		}
 		this.nodeSet.addMatch(node, level);
+		if( (level & PatternLocator.MATCH_LEVEL_MASK) == PatternLocator.IMPOSSIBLE_MATCH ) {
+			return true;
+		}
+		return false;
+	}
+
+	@Override
+	public boolean visit(ImportDeclaration node) {
 		return true;
 	}
 }
