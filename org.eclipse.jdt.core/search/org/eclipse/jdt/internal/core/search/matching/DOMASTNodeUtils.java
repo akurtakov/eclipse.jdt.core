@@ -29,6 +29,7 @@ public class DOMASTNodeUtils {
 			|| node instanceof MethodDeclaration
 			|| node instanceof FieldDeclaration
 			|| node instanceof Initializer
+			|| node instanceof ImportDeclaration
 			|| node instanceof CompilationUnit
 			|| node instanceof AnnotationTypeMemberDeclaration) {
 			return getDeclaringJavaElement(node);
@@ -85,6 +86,13 @@ public class DOMASTNodeUtils {
 				} catch( JavaModelException jme) {
 					// ignore
 				}
+			}
+		}
+		if( key instanceof ImportDeclaration id) {
+			ASTNode parentNode = id.getParent();
+			if( parentNode instanceof CompilationUnit unit) {
+				IJavaElement parentEl = ((CompilationUnit)id.getParent()).getJavaElement();
+				return ((org.eclipse.jdt.internal.core.CompilationUnit) parentEl).getImport(id.getName().toString());
 			}
 		}
 		return null;
