@@ -449,7 +449,7 @@ public class DOMCodeSelector {
 				}
 				IMethod methodModel = ((IMethod)methodBinding.getJavaElement());
 				boolean allowExtraParam = true;
-				if ((methodModel.getFlags() & Flags.AccStatic) != 0) {
+				if (methodModel != null && (methodModel.getFlags() & Flags.AccStatic) != 0) {
 					allowExtraParam = false;
 					if (methodRef.getExpression() instanceof ClassInstanceCreation) {
 						return null;
