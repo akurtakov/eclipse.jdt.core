@@ -69,8 +69,6 @@ class JavadocConverter {
 	// Both copied from jdk.javadoc.internal.doclets.formats.html.taglets.snippet.Parser
 	private static final Pattern JAVA_COMMENT = Pattern.compile(
 			"^(?<payload>.*)//(?<markup>\\s*@\\s*\\w+.+?)$");
-	private static final Pattern PROPERTIES_COMMENT = Pattern.compile(
-			"^(?<payload>[ \t]*([#!].*)?)[#!](?<markup>\\s*@\\s*\\w+.+?)$");
 
 	private final AST ast;
 	private final JavacConverter javacConverter;
@@ -132,14 +130,6 @@ class JavadocConverter {
 		Javadoc res = this.ast.newJavadoc();
 		res.setSourceRange(this.initialOffset, this.endOffset - this.initialOffset);
 		try {
-			if( this.javacConverter.ast.apiLevel == AST.JLS2_INTERNAL) {
-				String rawContent = getRawContent();
-				try {
-					res.setComment(rawContent);
-				} catch( IllegalArgumentException iae) {
-					// Ignore
-				}
-			}
 			if (this.buildJavadoc) {
 				List<DCTree> treeElements = Stream.of(docComment.preamble, docComment.fullBody, docComment.postamble, docComment.tags)
 						.flatMap(List::stream).toList();

@@ -22,7 +22,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.PriorityQueue;
 import java.util.Set;
@@ -390,9 +389,7 @@ class JavacConverter {
 		ImportDeclaration res = this.ast.newImportDeclaration();
 		commonSettings(res, javac);
 		if (javac.isStatic()) {
-			if (this.ast.apiLevel != AST.JLS2_INTERNAL) {
-				res.setStatic(true);
-			}
+			res.setStatic(true);
 		}
 		var select = javac.getQualifiedIdentifier();
 		if (select.getIdentifier().contentEquals("*")) {
@@ -410,9 +407,7 @@ class JavacConverter {
 			res.setName(toName(select));
 		}
 		if (javac.isStatic() || javac.isModule()) {
-			if (this.ast.apiLevel == AST.JLS2_INTERNAL) {
-				res.setFlags(res.getFlags() | ASTNode.MALFORMED);
-			} else if (this.ast.apiLevel < AST.JLS23_INTERNAL) {
+			if (this.ast.apiLevel < AST.JLS23_INTERNAL) {
 				if (!javac.isStatic()) {
 					res.setFlags(res.getFlags() | ASTNode.MALFORMED);
 				}
@@ -442,9 +437,7 @@ class JavacConverter {
 		var moduleModifier = this.ast.newModifier(ModifierKeyword.MODULE_KEYWORD);
 		res.modifiers().add(moduleModifier);
 		if (javac.isStatic()) {
-			if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-				res.setStatic(true);
-			}
+			res.setStatic(true);
 		}
 		var select = javac.getQualifiedIdentifier();
 		res.setName(toName(select));
@@ -568,14 +561,6 @@ class JavacConverter {
 	}
 
 	private AbstractTypeDeclaration convertClassDecl(JCClassDecl javacClassDecl, ASTNode parent) {
-		if( javacClassDecl.getKind() == Kind.ANNOTATION_TYPE &&
-				(this.ast.apiLevel <= AST.JLS2_INTERNAL || this.ast.scanner.complianceLevel < ClassFileConstants.JDK1_5)) {
-			return null;
-		}
-		if( javacClassDecl.getKind() == Kind.ENUM &&
-				(this.ast.apiLevel <= AST.JLS2_INTERNAL || this.ast.scanner.complianceLevel < ClassFileConstants.JDK1_5)) {
-			return null;
-		}
 		if( javacClassDecl.getKind() == Kind.RECORD &&
 				(this.ast.apiLevel < AST.JLS16_INTERNAL || this.ast.scanner.complianceLevel < ClassFileConstants.JDK16)) {
 			return null;
@@ -612,50 +597,23 @@ class JavacConverter {
 				simpName.setSourceRange(namePosition, simpName.getIdentifier().length());
 			}
 		}
-		if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-			res.modifiers().addAll(convert(javacClassDecl.mods, res));
-		} else {
-			int jls2Flags = getJLS2ModifiersFlags(javacClassDecl.mods);
-			jls2Flags &= ~Flags.INTERFACE; // remove AccInterface flags, see ASTConverter
-			res.internalSetModifiers(jls2Flags);
-		}
+		res.modifiers().addAll(convert(javacClassDecl.mods, res));
 		if (res instanceof TypeDeclaration typeDeclaration) {
 			if (javacClassDecl.getExtendsClause() != null) {
-				if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-					typeDeclaration.setSuperclassType(convertToType(javacClassDecl.getExtendsClause()));
-				} else {
-					JCExpression e = javacClassDecl.getExtendsClause();
-					Name m = toName(e);
-					if( m != null ) {
-						typeDeclaration.setSuperclass(m);
-					}
-				}
+				typeDeclaration.setSuperclassType(convertToType(javacClassDecl.getExtendsClause()));
 			}
 			if (javacClassDecl.getImplementsClause() != null) {
-				if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-					javacClassDecl.getImplementsClause().stream()
-						.map(this::convertToType)
-						.filter(Objects::nonNull)
-						.forEach(typeDeclaration.superInterfaceTypes()::add);
-				} else {
-					Iterator<JCExpression> it = javacClassDecl.getImplementsClause().iterator();
-					while(it.hasNext()) {
-						JCExpression next = it.next();
-						Name m = toName(next);
-						if( m != null ) {
-							typeDeclaration.superInterfaces().add(m);
-						}
-					}
-				}
+				javacClassDecl.getImplementsClause().stream()
+					.map(this::convertToType)
+					.filter(Objects::nonNull)
+					.forEach(typeDeclaration.superInterfaceTypes()::add);
 			}
 
 			if( javacClassDecl.getTypeParameters() != null ) {
-				if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-					Iterator<JCTypeParameter> i = javacClassDecl.getTypeParameters().iterator();
-					while(i.hasNext()) {
-						JCTypeParameter next = i.next();
-						typeDeclaration.typeParameters().add(convert(next));
-					}
+				Iterator<JCTypeParameter> i = javacClassDecl.getTypeParameters().iterator();
+				while(i.hasNext()) {
+					JCTypeParameter next = i.next();
+					typeDeclaration.typeParameters().add(convert(next));
 				}
 			}
 
@@ -780,7 +738,7 @@ class JavacConverter {
 			ret.typeBounds().add(type);
 			end = typeParameter.getEndPosition(this.javacCompilationUnit.endPositions);
 		}
-		if (typeParameter.getAnnotations() != null && this.ast.apiLevel() >= AST.JLS8_INTERNAL) {
+		if (typeParameter.getAnnotations() != null) {
 			typeParameter.getAnnotations().stream()
 				.map(this::convert)
 				.forEach(ret.modifiers()::add);
@@ -834,12 +792,8 @@ class JavacConverter {
 		if (tree instanceof JCBlock block) {
 			Initializer res = this.ast.newInitializer();
 			commonSettings(res, tree);
-			if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-				// Now we have the tough task of going from a flags number to actual modifiers with source ranges
-				res.modifiers().addAll(convertModifiersFromFlags(block.getStartPosition(), block.endpos, block.flags));
-			} else {
-				res.internalSetModifiers(getJLS2ModifiersFlags(block.flags));
-			}
+			// Now we have the tough task of going from a flags number to actual modifiers with source ranges
+			res.modifiers().addAll(convertModifiersFromFlags(block.getStartPosition(), block.endpos, block.flags));
 			boolean fillBlock = shouldFillBlock(block, this.focalPoint);
 			if( fillBlock ) {
 				res.setBody(convertBlock(block));
@@ -924,11 +878,7 @@ class JavacConverter {
 		}
 		MethodDeclaration res = this.ast.newMethodDeclaration();
 		commonSettings(res, javac);
-		if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-			res.modifiers().addAll(convert(javac.getModifiers(), res));
-		} else {
-			res.internalSetModifiers(getJLS2ModifiersFlags(javac.mods));
-		}
+		res.modifiers().addAll(convert(javac.getModifiers(), res));
 		String javacName = javac.getName().toString();
 		String methodDeclName = getMethodDeclName(javac, parent, parent instanceof RecordDeclaration);
 		boolean methodDeclNameMatchesInit = Objects.equals(methodDeclName, Names.instance(this.context).init.toString());
@@ -978,36 +928,20 @@ class JavacConverter {
 			}
 		}
 
-		if( retTypeTree == null ) {
-			if( isConstructor && this.ast.apiLevel == AST.JLS2_INTERNAL ) {
-				retType = this.ast.newPrimitiveType(convert(TypeKind.VOID));
-				// // TODO need to find the right range
-				retType.setSourceRange(javac.mods.pos + getJLS2ModifiersFlagsAsStringLength(javac.mods.flags), 0);
-			}
-		} else {
+		if( retTypeTree != null ) {
 			retType = convertToType(retTypeTree);
 		}
 		var dims = convertDimensionsAfterPosition(retTypeTree, javac.pos);
 		if (!dims.isEmpty() && retTypeTree.pos > javac.pos ) {
 			// The array dimensions are part of the variable name
-			if( this.ast.apiLevel < AST.JLS8_INTERNAL) {
-				res.setExtraDimensions(dims.size());
-			} else {
-				res.extraDimensions().addAll(dims);
-			}
+			res.extraDimensions().addAll(dims);
 			retType = convertToType(unwrapDimensions(retTypeTree, dims.size()));
 		}
 
 		if( retType != null || isConstructor) {
-			if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-				res.setReturnType2(retType);
-			} else {
-				res.internalSetReturnType(retType);
-			}
+			res.setReturnType2(retType);
 		} else {
-			if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-				res.setReturnType2(null);
-			}
+			res.setReturnType2(null);
 		}
 
 		if( !isCompactConstructor) {
@@ -1033,11 +967,7 @@ class JavacConverter {
 			Iterator<JCTypeParameter> i = javac.getTypeParameters().iterator();
 			while(i.hasNext()) {
 				JCTypeParameter next = i.next();
-				if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-					res.typeParameters().add(convert(next));
-				} else {
-					// TODO
-				}
+				res.typeParameters().add(convert(next));
 			}
 		}
 
@@ -1051,10 +981,9 @@ class JavacConverter {
 					boolean isInterface = td instanceof TypeDeclaration td1 && td1.isInterface();
 					long modFlags = javac.getModifiers() == null ? 0 : javac.getModifiers().flags;
 					boolean isAbstractOrNative = (modFlags & (Flags.ABSTRACT | Flags.NATIVE)) != 0;
-					boolean isJlsBelow8 = this.ast.apiLevel < AST.JLS8_INTERNAL;
 					boolean isJlsAbove8 = this.ast.apiLevel > AST.JLS8_INTERNAL;
 					long flagsToCheckForAboveJLS8 = Flags.STATIC | Flags.DEFAULT | (isJlsAbove8 ? Flags.PRIVATE : 0);
-					boolean notAllowed = (isAbstractOrNative || (isInterface && (isJlsBelow8 || (modFlags & flagsToCheckForAboveJLS8) == 0)));
+					boolean notAllowed = (isAbstractOrNative || (isInterface && (modFlags & flagsToCheckForAboveJLS8) == 0));
 					if (notAllowed) {
 						res.setFlags(res.getFlags() | ASTNode.MALFORMED);
 					}
@@ -1071,13 +1000,9 @@ class JavacConverter {
 		}
 
 		for (JCExpression thrown : javac.getThrows()) {
-			if (this.ast.apiLevel < AST.JLS8_INTERNAL) {
-				res.thrownExceptions().add(toName(thrown));
-			} else {
-				Type type = convertToType(thrown);
-				if (type != null) {
-					res.thrownExceptionTypes().add(type);
-				}
+			Type type = convertToType(thrown);
+			if (type != null) {
+				res.thrownExceptionTypes().add(type);
 			}
 		}
 		if( malformed ) {
@@ -1120,11 +1045,7 @@ class JavacConverter {
 			nameSettings(simpleName, javac, simpleName.toString());
 			res.setName(simpleName);
 		}
-		if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-			res.modifiers().addAll(convert(javac.getModifiers(), res));
-		} else {
-			res.internalSetModifiers(getJLS2ModifiersFlags(javac.mods));
-		}
+		res.modifiers().addAll(convert(javac.getModifiers(), res));
 		
 		JCTree type = javac.getType();
 		if (type instanceof JCAnnotatedType annotatedType) {
@@ -1139,19 +1060,13 @@ class JavacConverter {
 			if(type instanceof JCArrayTypeTree arr) {
 				type = unwrapDimensions(arr, 1);
 			}
-			if( this.ast.apiLevel > AST.JLS2_INTERNAL) {
-				res.setVarargs(true);
-			}
+			res.setVarargs(true);
 		}
 		
 		List<Dimension> dims = convertDimensionsAfterPosition(javac.getType(), javac.getPreferredPosition()); // +1 to exclude part of the type declared before name
 		if(!dims.isEmpty() ) {
 			// Some of the array dimensions are part of the variable name
-			if( this.ast.apiLevel < AST.JLS8_INTERNAL) {
-				res.setExtraDimensions(dims.size()); // the type is 1-dim array
-			} else {
-				res.extraDimensions().addAll(dims);
-			}
+			res.extraDimensions().addAll(dims);
 			type = unwrapDimensions(type, dims.size());
 		} 
 		
@@ -1177,10 +1092,6 @@ class JavacConverter {
 		return res;
 	}
 
-	private int getJLS2ModifiersFlags(JCModifiers mods) {
-		return getJLS2ModifiersFlags(mods.flags);
-	}
-
 	private VariableDeclarationFragment createVariableDeclarationFragment(JCVariableDecl javac) {
 		VariableDeclarationFragment fragment = this.ast.newVariableDeclarationFragment();
 		commonSettings(fragment, javac);
@@ -1195,11 +1106,7 @@ class JavacConverter {
 			fragment.setName(simpleName);
 		}
 		var dims = convertDimensionsAfterPosition(javac.getType(), fragmentStart);
-		if( this.ast.apiLevel < AST.JLS8_INTERNAL) {
-			fragment.setExtraDimensions(dims.size());
-		} else {
-			fragment.extraDimensions().addAll(dims);
-		}
+		fragment.extraDimensions().addAll(dims);
 		if (javac.getInitializer() != null) {
 			Expression initializer = convertExpression(javac.getInitializer());
 			if( initializer != null ) {
@@ -1239,11 +1146,7 @@ class JavacConverter {
 		} else {
 			FieldDeclaration res = this.ast.newFieldDeclaration(fragment);
 			commonSettings(res, javac);
-			if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-				res.modifiers().addAll(convert(javac.getModifiers(), res));
-			} else {
-				res.internalSetModifiers(getJLS2ModifiersFlags(javac.mods));
-			}
+			res.modifiers().addAll(convert(javac.getModifiers(), res));
 
 			Type resType = null;
 			int count = fragment.getExtraDimensions();
@@ -1294,11 +1197,7 @@ class JavacConverter {
 				moduleDeclaration.setJavadoc(javadoc);
 				moduleDeclaration.setSourceRange(javadoc.getStartPosition(), moduleDeclaration.getStartPosition() + moduleDeclaration.getLength() - javadoc.getStartPosition());
 			} else if (node instanceof PackageDeclaration packageDeclaration) {
-				if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-					packageDeclaration.setJavadoc(javadoc);
-				} else {
-					this.notAttachedComments.add(javadoc);
-				}
+				packageDeclaration.setJavadoc(javadoc);
 				packageDeclaration.setSourceRange(javadoc.getStartPosition(), packageDeclaration.getStartPosition() + packageDeclaration.getLength() - javadoc.getStartPosition());
 			} else {
 				this.notAttachedComments.add(javadoc);
@@ -1409,12 +1308,10 @@ class JavacConverter {
 					SuperMethodInvocation res2 = this.ast.newSuperMethodInvocation();
 					commonSettings(res2, javac);
 					methodInvocation.getArguments().stream().map(this::convertExpression).forEach(res2.arguments()::add);
-					if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-						methodInvocation.getTypeArguments().stream()
-							.map(this::convertToType)
-							.filter(Objects::nonNull)
-							.forEach(res2.typeArguments()::add);
-					}
+					methodInvocation.getTypeArguments().stream()
+						.map(this::convertToType)
+						.filter(Objects::nonNull)
+						.forEach(res2.typeArguments()::add);
 					if( superCall1 ) {
 						res2.setQualifier(toName(fa.getExpression()));
 					}
@@ -1440,12 +1337,10 @@ class JavacConverter {
 					SuperMethodInvocation res2 = this.ast.newSuperMethodInvocation();
 					commonSettings(res2, javac);
 					methodInvocation.getArguments().stream().map(this::convertExpression).forEach(res.arguments()::add);
-					if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-						methodInvocation.getTypeArguments().stream()
-							.map(this::convertToType)
-							.filter(Objects::nonNull)
-							.forEach(res.typeArguments()::add);
-					}
+					methodInvocation.getTypeArguments().stream()
+						.map(this::convertToType)
+						.filter(Objects::nonNull)
+						.forEach(res.typeArguments()::add);
 					if( superCall1 ) {
 						res2.setQualifier(toName(fa.getExpression()));
 					}
@@ -1469,25 +1364,17 @@ class JavacConverter {
 					.forEach(res.arguments()::add);
 			}
 			if (methodInvocation.getTypeArguments() != null) {
-				if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-					methodInvocation.getTypeArguments().stream()
-						.map(this::convertToType)
-						.filter(Objects::nonNull)
-						.forEach(res.typeArguments()::add);
-				}
+				methodInvocation.getTypeArguments().stream()
+					.map(this::convertToType)
+					.filter(Objects::nonNull)
+					.forEach(res.typeArguments()::add);
 			}
 			return res;
 		}
 		if (javac instanceof JCNewClass newClass) {
 			ClassInstanceCreation res = this.ast.newClassInstanceCreation();
 			commonSettings(res, javac);
-			if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-				res.setType(convertToType(newClass.getIdentifier()));
-			} else {
-				Name n = toName(newClass.getIdentifier());
-				if( n != null )
-					res.setName(n);
-			}
+			res.setType(convertToType(newClass.getIdentifier()));
 			if (newClass.getClassBody() != null && newClass.getClassBody() instanceof JCClassDecl javacAnon) {
 				AnonymousClassDeclaration anon = createAnonymousClassDeclaration(javacAnon, res);
 				res.setAnonymousClassDeclaration(anon);
@@ -1500,7 +1387,7 @@ class JavacConverter {
 			if (newClass.encl != null) {
 				res.setExpression(convertExpression(newClass.encl));
 			}
-			if( newClass.getTypeArguments() != null && this.ast.apiLevel != AST.JLS2_INTERNAL) {
+			if( newClass.getTypeArguments() != null) {
 				Iterator<JCExpression> it = newClass.getTypeArguments().iterator();
 				while(it.hasNext()) {
 					Type e = convertToType(it.next());
@@ -1724,69 +1611,59 @@ class JavacConverter {
 				ArrayType arrayType;
 				if (type instanceof ArrayType childArrayType) {
 					arrayType = childArrayType;
-					if( this.ast.apiLevel >= AST.JLS8_INTERNAL) {
-						var extraDimensions = jcNewArray.getDimAnnotations().stream()
-							.map(annotations -> annotations.stream().map(this::convert).toList())
-							.map(annotations -> {
-								Dimension dim = this.ast.newDimension();
-								dim.annotations().addAll(annotations);
-								int startOffset = annotations.stream().mapToInt(Annotation::getStartPosition).min().orElse(-1);
-								int endOffset = annotations.stream().mapToInt(ann -> ann.getStartPosition() + ann.getLength()).max().orElse(-1);
-								dim.setSourceRange(startOffset, endOffset - startOffset);
-								return dim;
-							})
-							.toList();
-						if (arrayType.dimensions().isEmpty()) {
-							arrayType.dimensions().addAll(extraDimensions);
-						} else {
-							var lastDimension = arrayType.dimensions().removeFirst();
-							arrayType.dimensions().addAll(extraDimensions);
-							arrayType.dimensions().add(lastDimension);
-						}
-						int totalRequiredDims = countDimensions(jcNewArray.getType()) + 1;
-						int totalCreated = arrayType.dimensions().size();
-						if( totalCreated < totalRequiredDims) {
-							int endPos = jcNewArray.getEndPosition(this.javacCompilationUnit.endPositions);
-							int startPos = jcNewArray.getStartPosition();
-							String raw = this.rawText.substring(startPos, endPos);
-							for( int i = 0; i < totalRequiredDims; i++ ) {
-								int absoluteEndChar = startPos + ordinalIndexOf(raw, "]", i+1);
-								int absoluteEnd = absoluteEndChar + 1;
-								int absoluteStart = startPos + ordinalIndexOf(raw, "[", i+1);
-								boolean found = false;
-								if( absoluteEnd != -1 && absoluteStart != -1 ) {
-									for( int j = 0; j < totalCreated && !found; j++ ) {
-										Dimension d = (Dimension)arrayType.dimensions().get(j);
-										if( d.getStartPosition() == absoluteStart && (d.getStartPosition() + d.getLength()) == absoluteEnd) {
-											found = true;
-										}
+					var extraDimensions = jcNewArray.getDimAnnotations().stream()
+						.map(annotations -> annotations.stream().map(this::convert).toList())
+						.map(annotations -> {
+							Dimension dim = this.ast.newDimension();
+							dim.annotations().addAll(annotations);
+							int startOffset = annotations.stream().mapToInt(Annotation::getStartPosition).min().orElse(-1);
+							int endOffset = annotations.stream().mapToInt(ann -> ann.getStartPosition() + ann.getLength()).max().orElse(-1);
+							dim.setSourceRange(startOffset, endOffset - startOffset);
+							return dim;
+						})
+						.toList();
+					if (arrayType.dimensions().isEmpty()) {
+						arrayType.dimensions().addAll(extraDimensions);
+					} else {
+						var lastDimension = arrayType.dimensions().removeFirst();
+						arrayType.dimensions().addAll(extraDimensions);
+						arrayType.dimensions().add(lastDimension);
+					}
+					int totalRequiredDims = countDimensions(jcNewArray.getType()) + 1;
+					int totalCreated = arrayType.dimensions().size();
+					if( totalCreated < totalRequiredDims) {
+						int endPos = jcNewArray.getEndPosition(this.javacCompilationUnit.endPositions);
+						int startPos = jcNewArray.getStartPosition();
+						String raw = this.rawText.substring(startPos, endPos);
+						for( int i = 0; i < totalRequiredDims; i++ ) {
+							int absoluteEndChar = startPos + ordinalIndexOf(raw, "]", i+1);
+							int absoluteEnd = absoluteEndChar + 1;
+							int absoluteStart = startPos + ordinalIndexOf(raw, "[", i+1);
+							boolean found = false;
+							if( absoluteEnd != -1 && absoluteStart != -1 ) {
+								for( int j = 0; j < totalCreated && !found; j++ ) {
+									Dimension d = (Dimension)arrayType.dimensions().get(j);
+									if( d.getStartPosition() == absoluteStart && (d.getStartPosition() + d.getLength()) == absoluteEnd) {
+										found = true;
 									}
-									if( !found ) {
-										// Need to make a new one
-										Dimension d = this.ast.newDimension();
-										d.setSourceRange(absoluteStart, absoluteEnd - absoluteStart);
-										arrayType.dimensions().add(i, d);
-										totalCreated++;
-									}
+								}
+								if( !found ) {
+									// Need to make a new one
+									Dimension d = this.ast.newDimension();
+									d.setSourceRange(absoluteStart, absoluteEnd - absoluteStart);
+									arrayType.dimensions().add(i, d);
+									totalCreated++;
 								}
 							}
 						}
-					} else {
-						// JLS < 8, just wrap underlying type
-						arrayType = this.ast.newArrayType(childArrayType);
 					}
 				} else if(jcNewArray.dims != null && jcNewArray.dims.size() > 0 ){
 					// Child is not array type
 					arrayType = this.ast.newArrayType(type);
 					int dims = jcNewArray.dims.size();
 					for( int i = 0; i < dims - 1; i++ ) {
-						if( this.ast.apiLevel >= AST.JLS8_INTERNAL) {
-							// TODO, this dimension needs source range
-							arrayType.dimensions().addFirst(this.ast.newDimension());
-						} else {
-							// JLS < 8, wrap underlying
-							arrayType = this.ast.newArrayType(arrayType);
-						}
+						// TODO, this dimension needs source range
+						arrayType.dimensions().addFirst(this.ast.newDimension());
 					}
 				} else {
 					// Child is not array type, and 0 dims for underlying
@@ -2102,31 +1979,23 @@ class JavacConverter {
 		do {
 			if( elem.pos >= pos) {
 				if (elem instanceof JCArrayTypeTree arrayType) {
-					if (this.ast.apiLevel < AST.JLS8_INTERNAL) {
-						res.add(null);
-					} else {
-						Dimension dimension = this.ast.newDimension();
-						res.add(dimension);
-						// Would be better to use a Tokenizer here that is capable of skipping comments
-						int startPosition = this.rawText.indexOf('[', arrayType.pos);
-						int endPosition = this.rawText.indexOf(']', startPosition);
-						dimension.setSourceRange(startPosition, endPosition - startPosition + 1);
-					}
+					Dimension dimension = this.ast.newDimension();
+					res.add(dimension);
+					// Would be better to use a Tokenizer here that is capable of skipping comments
+					int startPosition = this.rawText.indexOf('[', arrayType.pos);
+					int endPosition = this.rawText.indexOf(']', startPosition);
+					dimension.setSourceRange(startPosition, endPosition - startPosition + 1);
 					elem = arrayType.getType();
 				} else if (elem instanceof JCAnnotatedType annotated && annotated.getUnderlyingType() instanceof JCArrayTypeTree arrayType) {
-					if (this.ast.apiLevel < AST.JLS8_INTERNAL) {
-						res.add(null);
-					} else {
-						Dimension dimension = this.ast.newDimension();
-						annotated.getAnnotations().stream()
-							.map(this::convert)
-							.forEach(dimension.annotations()::add);
-						// Would be better to use a Tokenizer here that is capable of skipping comments
-						int startPosition = this.rawText.indexOf('[', arrayType.pos);
-						int endPosition = this.rawText.indexOf(']', startPosition);
-						dimension.setSourceRange(startPosition, endPosition - startPosition + 1);
-						res.add(dimension);
-					}
+					Dimension dimension = this.ast.newDimension();
+					annotated.getAnnotations().stream()
+						.map(this::convert)
+						.forEach(dimension.annotations()::add);
+					// Would be better to use a Tokenizer here that is capable of skipping comments
+					int startPosition = this.rawText.indexOf('[', arrayType.pos);
+					int endPosition = this.rawText.indexOf(']', startPosition);
+					dimension.setSourceRange(startPosition, endPosition - startPosition + 1);
+					res.add(dimension);
 					elem = arrayType.getType();
 				} else {
 					elem = null;
@@ -2180,9 +2049,7 @@ class JavacConverter {
 		javac.getArguments().stream().map(this::convertExpression).forEach(res.arguments()::add);
 
 		//res.setFlags(javac.getFlags() | ASTNode.MALFORMED);
-		if( this.ast.apiLevel > AST.JLS2_INTERNAL) {
-			javac.getTypeArguments().stream().map(this::convertToType).forEach(res.typeArguments()::add);
-		}
+		javac.getTypeArguments().stream().map(this::convertToType).forEach(res.typeArguments()::add);
 		return res;
 	}
 
@@ -2193,12 +2060,10 @@ class JavacConverter {
 		javac.getArguments().stream().map(this::convertExpression).forEach(res.arguments()::add);
 
 		//res.setFlags(javac.getFlags() | ASTNode.MALFORMED);
-		if( this.ast.apiLevel > AST.JLS2_INTERNAL) {
-			javac.getTypeArguments().stream()
-				.map(this::convertToType)
-				.filter(Objects::nonNull)
-				.forEach(res.typeArguments()::add);
-		}
+		javac.getTypeArguments().stream()
+			.map(this::convertToType)
+			.filter(Objects::nonNull)
+			.forEach(res.typeArguments()::add);
 		if( javac.getMethodSelect() instanceof JCFieldAccess jcfa && jcfa.selected != null ) {
 			res.setExpression(convertExpression(jcfa.selected));
 		}
@@ -2214,12 +2079,10 @@ class JavacConverter {
 		// (or equivalent with type parameters)
 		res.setSourceRange(res.getStartPosition(), res.getLength() + 1);
 		javac.getArguments().stream().map(this::convertExpression).forEach(res.arguments()::add);
-		if( this.ast.apiLevel > AST.JLS2_INTERNAL) {
-			javac.getTypeArguments().stream()
-				.map(this::convertToType)
-				.filter(Objects::nonNull)
-				.forEach(res.typeArguments()::add);
-		}
+		javac.getTypeArguments().stream()
+			.map(this::convertToType)
+			.filter(Objects::nonNull)
+			.forEach(res.typeArguments()::add);
 		return res;
 	}
 
@@ -2421,7 +2284,7 @@ class JavacConverter {
 					int extraDims = 0;
 					if( fragment.extraArrayDimensions > 0 ) {
 						extraDims = fragment.extraArrayDimensions;
-					} else if( this.ast.apiLevel > AST.JLS4_INTERNAL && fragment.extraDimensions() != null && fragment.extraDimensions().size() > 0 ) {
+					} else if(fragment.extraDimensions() != null && fragment.extraDimensions().size() > 0 ) {
 						extraDims = fragment.extraDimensions().size();
 					}
 					res.setType(convertToType(unwrapDimensions(jcatt, extraDims)));
@@ -2433,14 +2296,7 @@ class JavacConverter {
 				st.setSourceRange(javac.getStartPosition(), 3);
 				res.setType(st);
 			}
-			if( this.ast.apiLevel > AST.JLS2_INTERNAL) {
-				res.modifiers().addAll(convert(jcVariableDecl.getModifiers(), res));
-			} else {
-				JCModifiers mods = jcVariableDecl.getModifiers();
-				int[] total = new int[] {0};
-				mods.getFlags().forEach(x -> {total[0] += modifierToFlagVal(x);});
-				res.internalSetModifiers(total[0]);
-			}
+			res.modifiers().addAll(convert(jcVariableDecl.getModifiers(), res));
 			return res;
 		}
 		if (javac instanceof JCIf ifStatement) {
@@ -2493,22 +2349,16 @@ class JavacConverter {
 			return res;
 		}
 		if (javac instanceof JCEnhancedForLoop jcEnhancedForLoop) {
-			if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-				EnhancedForStatement res = this.ast.newEnhancedForStatement();
-				commonSettings(res, javac);
-				res.setParameter((SingleVariableDeclaration)convertVariableDeclaration(jcEnhancedForLoop.getVariable()));
-				Expression expr = convertExpression(jcEnhancedForLoop.getExpression());
-				if( expr != null )
-					res.setExpression(expr);
-				Statement stmt = convertStatement(jcEnhancedForLoop.getStatement(), res);
-				if( stmt != null )
-					res.setBody(stmt);
-				return res;
-			} else {
-				EmptyStatement res = this.ast.newEmptyStatement();
-				commonSettings(res, javac);
-				return res;
-			}
+			EnhancedForStatement res = this.ast.newEnhancedForStatement();
+			commonSettings(res, javac);
+			res.setParameter((SingleVariableDeclaration)convertVariableDeclaration(jcEnhancedForLoop.getVariable()));
+			Expression expr = convertExpression(jcEnhancedForLoop.getExpression());
+			if( expr != null )
+				res.setExpression(expr);
+			Statement stmt = convertStatement(jcEnhancedForLoop.getStatement(), res);
+			if( stmt != null )
+				res.setBody(stmt);
+			return res;
 		}
 		if (javac instanceof JCBreak jcBreak) {
 			BreakStatement res = this.ast.newBreakStatement();
@@ -2744,7 +2594,7 @@ class JavacConverter {
 					int extraDims = 0;
 					if( fragment.extraArrayDimensions > 0 ) {
 						extraDims = fragment.extraArrayDimensions;
-					} else if( this.ast.apiLevel > AST.JLS4_INTERNAL && fragment.extraDimensions() != null && fragment.extraDimensions().size() > 0 ) {
+					} else if(fragment.extraDimensions() != null && fragment.extraDimensions().size() > 0 ) {
 						extraDims = fragment.extraDimensions().size();
 					}
 					jdtVariableDeclarationExpression.setType(convertToType(unwrapDimensions(jcatt, extraDims)));
@@ -2786,22 +2636,20 @@ class JavacConverter {
 			res.setFinally(convertBlock(javac.getFinallyBlock()));
 		}
 
-		if( this.ast.apiLevel >= AST.JLS8_INTERNAL) {
-			if( javac.getResources().size() > 0) {
-				Iterator<JCTree> it = javac.getResources().iterator();
-				while(it.hasNext()) {
-					ASTNode working = convertTryResource(it.next(), parent);
-					if( working instanceof VariableDeclarationExpression) {
-						res.resources().add(working);
-					} else if( this.ast.apiLevel >= AST.JLS9_INTERNAL && working instanceof Name){
-						res.resources().add(working);
-					} else {
-						res.setFlags(res.getFlags() | ASTNode.MALFORMED);
-					}
+		if( javac.getResources().size() > 0) {
+			Iterator<JCTree> it = javac.getResources().iterator();
+			while(it.hasNext()) {
+				ASTNode working = convertTryResource(it.next(), parent);
+				if( working instanceof VariableDeclarationExpression) {
+					res.resources().add(working);
+				} else if( this.ast.apiLevel >= AST.JLS9_INTERNAL && working instanceof Name){
+					res.resources().add(working);
+				} else {
+					res.setFlags(res.getFlags() | ASTNode.MALFORMED);
 				}
-			} else {
-				res.setFlags(res.getFlags() | ASTNode.MALFORMED);
 			}
+		} else {
+			res.setFlags(res.getFlags() | ASTNode.MALFORMED);
 		}
 		javac.getCatches().stream().map(this::convertCatcher).forEach(res.catchClauses()::add);
 		return res;
@@ -2826,11 +2674,9 @@ class JavacConverter {
 					initializer.delete();
 					fragment.setInitializer(initializer);
 				}
-				if (parent.getAST().apiLevel() > AST.JLS4) {
-					for (Dimension extraDimension : (List<Dimension>)single.extraDimensions()) {
-						extraDimension.delete();
-						fragment.extraDimensions().add(extraDimension);
-					}
+				for (Dimension extraDimension : (List<Dimension>)single.extraDimensions()) {
+					extraDimension.delete();
+					fragment.extraDimensions().add(extraDimension);
 				}
 			} else {
 				fragment = this.ast.newVariableDeclarationFragment();
@@ -2839,14 +2685,7 @@ class JavacConverter {
 			commonSettings(res, javac);
 			removeTrailingSemicolonFromRange(res);
 			res.setType(convertToType(decl.getType()));
-			if( this.ast.apiLevel > AST.JLS2_INTERNAL) {
-				res.modifiers().addAll(convert(decl.getModifiers(), res));
-			} else {
-				JCModifiers mods = decl.getModifiers();
-				int[] total = new int[] {0};
-				mods.getFlags().forEach(x -> {total[0] += modifierToFlagVal(x);});
-				res.internalSetModifiers(total[0]);
-			}
+			res.modifiers().addAll(convert(decl.getModifiers(), res));
 			return res;
 		}
 		if (javac instanceof JCExpression jcExpression) {
@@ -2967,7 +2806,7 @@ class JavacConverter {
 				// or empty (eg `test.`)
 				simpleName.setSourceRange(qualifierType.getStartPosition(), 0);
 			}
-			if(qualifierType instanceof SimpleType simpleType && (ast.apiLevel() < AST.JLS8 || simpleType.annotations().isEmpty())) {
+			if(qualifierType instanceof SimpleType simpleType && simpleType.annotations().isEmpty()) {
 				simpleType.delete();
 				Name parentName = simpleType.getName();
 				parentName.setParent(null, null);
@@ -2995,19 +2834,13 @@ class JavacConverter {
 			return res;
 		}
 		if (javac instanceof JCTypeUnion union) {
-			if (this.ast.apiLevel() > AST.JLS3) {
-				UnionType res = this.ast.newUnionType();
-				commonSettings(res, javac);
-				union.getTypeAlternatives().stream()
-					.map(this::convertToType)
-					.filter(Objects::nonNull)
-					.forEach(res.types()::add);
-				return res;
-			} else {
-				Optional<Type> lastType = union.getTypeAlternatives().reverse().stream().map(this::convertToType).filter(Objects::nonNull).findFirst();
-				lastType.ifPresent(a -> a.setFlags(a.getFlags() | ASTNode.MALFORMED));
-				return lastType.get();
-			}
+			UnionType res = this.ast.newUnionType();
+			commonSettings(res, javac);
+			union.getTypeAlternatives().stream()
+				.map(this::convertToType)
+				.filter(Objects::nonNull)
+				.forEach(res.types()::add);
+			return res;
 		}
 		if (javac instanceof JCArrayTypeTree jcArrayType) {
 			Type t = convertToType(jcArrayType.getType());
@@ -3015,7 +2848,7 @@ class JavacConverter {
 				return null;
 			}
 			ArrayType res;
-			if (t instanceof ArrayType childArrayType && this.ast.apiLevel > AST.JLS4_INTERNAL) {
+			if (t instanceof ArrayType childArrayType) {
 				res = childArrayType;
 				res.dimensions().addFirst(this.ast.newDimension());
 				commonSettings(res, jcArrayType.getType());
@@ -3036,10 +2869,8 @@ class JavacConverter {
 						int ordinalStart = ordinalIndexOf(raw, "[", dims);
 						if( ordinalEnd != -1 ) {
 							commonSettings(res, jcArrayType, ordinalEnd + 1, true);
-							if( this.ast.apiLevel >= AST.JLS8_INTERNAL ) {
-								if( res.dimensions().size() > 0 ) {
-									((Dimension)res.dimensions().get(0)).setSourceRange(startPos + ordinalStart, ordinalEnd - ordinalStart + 1);
-								}
+							if( res.dimensions().size() > 0 ) {
+								((Dimension)res.dimensions().get(0)).setSourceRange(startPos + ordinalStart, ordinalEnd - ordinalStart + 1);
 							}
 							return res;
 						}
@@ -3051,17 +2882,13 @@ class JavacConverter {
 			return res;
 		}
 		if (javac instanceof JCTypeApply jcTypeApply) {
-			if( this.ast.apiLevel != AST.JLS2_INTERNAL) {
-				ParameterizedType res = this.ast.newParameterizedType(convertToType(jcTypeApply.getType()));
-				commonSettings(res, javac);
-				jcTypeApply.getTypeArguments().stream()
-					.map(this::convertToType)
-					.filter(Objects::nonNull)
-					.forEach(res.typeArguments()::add);
-				return res;
-			} else {
-				return convertToType(jcTypeApply.clazz);
-			}
+			ParameterizedType res = this.ast.newParameterizedType(convertToType(jcTypeApply.getType()));
+			commonSettings(res, javac);
+			jcTypeApply.getTypeArguments().stream()
+				.map(this::convertToType)
+				.filter(Objects::nonNull)
+				.forEach(res.typeArguments()::add);
+			return res;
 		}
 		if (javac instanceof JCWildcard wc) {
 			WildcardType res = this.ast.newWildcardType();
@@ -3089,7 +2916,6 @@ class JavacConverter {
 			JCExpression jcpe = jcAnnotatedType.getUnderlyingType();
 			if( jcAnnotatedType.getAnnotations() != null //
 				&& !jcAnnotatedType.getAnnotations().isEmpty() //
-				&& this.ast.apiLevel >= AST.JLS8_INTERNAL
 				&& !(jcpe instanceof JCWildcard)) {
 				if( jcpe instanceof JCFieldAccess jcfa2) {
 					if( jcfa2.selected instanceof JCAnnotatedType || jcfa2.selected instanceof JCTypeApply) {
@@ -3113,12 +2939,12 @@ class JavacConverter {
 			if (res == null) { // nothing specific
 				res = convertToType(jcAnnotatedType.getUnderlyingType());
 			}
-			if (res instanceof AnnotatableType annotatableType && this.ast.apiLevel() >= AST.JLS8_INTERNAL) {
+			if (res instanceof AnnotatableType annotatableType) {
 				for (JCAnnotation annotation : jcAnnotatedType.getAnnotations()) {
 					annotatableType.annotations().add(convert(annotation));
 				}
 			} else if (res instanceof ArrayType arrayType) {
-				if (this.ast.apiLevel() >= AST.JLS8 && !arrayType.dimensions().isEmpty()) {
+				if (!arrayType.dimensions().isEmpty()) {
 					for (JCAnnotation annotation : jcAnnotatedType.getAnnotations()) {
 						((Dimension)arrayType.dimensions().get(0)).annotations().add(convert(annotation));
 					}
@@ -3351,41 +3177,6 @@ class JavacConverter {
 		}
 		return res;
 	}
-
-	private int getJLS2ModifiersFlags(long oflags) {
-		int flags = 0;
-		if( (oflags & Flags.PUBLIC) > 0) flags += Flags.PUBLIC;
-		if( (oflags & Flags.PRIVATE) > 0) flags += Flags.PRIVATE;
-		if( (oflags & Flags.PROTECTED) > 0) flags += Flags.PROTECTED;
-		if( (oflags & Flags.STATIC) > 0) flags += Flags.STATIC;
-		if( (oflags & Flags.FINAL) > 0) flags += Flags.FINAL;
-		if( (oflags & Flags.SYNCHRONIZED) > 0) flags += Flags.SYNCHRONIZED;
-		if( (oflags & Flags.VOLATILE) > 0) flags += Flags.VOLATILE;
-		if( (oflags & Flags.TRANSIENT) > 0) flags += Flags.TRANSIENT;
-		if( (oflags & Flags.NATIVE) > 0) flags += Flags.NATIVE;
-		if( (oflags & Flags.INTERFACE) > 0) flags += Flags.INTERFACE;
-		if( (oflags & Flags.ABSTRACT) > 0) flags += Flags.ABSTRACT;
-		if( (oflags & Flags.STRICTFP) > 0) flags += Flags.STRICTFP;
-		return flags;
-	}
-
-	private int getJLS2ModifiersFlagsAsStringLength(long flags) {
-		int len = 0;
-		if( (flags & Flags.PUBLIC) > 0) len += 6 + 1;
-		if( (flags & Flags.PRIVATE) > 0) len += 7 + 1;
-		if( (flags & Flags.PROTECTED) > 0) len += 9 + 1;
-		if( (flags & Flags.STATIC) > 0) len += 5 + 1;
-		if( (flags & Flags.FINAL) > 0) len += 5 + 1;
-		if( (flags & Flags.SYNCHRONIZED) > 0) len += 12 + 1;
-		if( (flags & Flags.VOLATILE) > 0) len += 8 + 1;
-		if( (flags & Flags.TRANSIENT) > 0) len += 9 + 1;
-		if( (flags & Flags.NATIVE) > 0) len += 6 + 1;
-		if( (flags & Flags.INTERFACE) > 0) len += 9 + 1;
-		if( (flags & Flags.ABSTRACT) > 0) len += 8 + 1;
-		if( (flags & Flags.STRICTFP) > 0) len += 8 + 1;
-		return len;
-	}
-
 
 	private ModifierKeyword modifierToKeyword(javax.lang.model.element.Modifier javac) {
 		return switch (javac) {
