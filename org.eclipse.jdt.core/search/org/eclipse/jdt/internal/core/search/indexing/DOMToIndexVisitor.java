@@ -15,7 +15,9 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
 import org.eclipse.jdt.core.Signature;
+import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.core.dom.*;
+import org.eclipse.jdt.internal.core.search.matching.MethodPattern;
 
 class DOMToIndexVisitor extends ASTVisitor {
 
@@ -108,11 +110,17 @@ class DOMToIndexVisitor extends ASTVisitor {
 
 	@Override
 	public boolean visit(RecordDeclaration recordDecl) {
+		this.enclosingTypes.add(recordDecl);
 		// copied processing of TypeDeclaration
 		this.sourceIndexer.addClassDeclaration(recordDecl.getModifiers(), this.packageName, recordDecl.getName().getIdentifier().toCharArray(), null, null,
 				((List<Type>)recordDecl.superInterfaceTypes()).stream().map(this::name).toArray(char[][]::new), null, false);
 		return true;
 	}
+	@Override
+	public void endVisit(RecordDeclaration type) {
+		this.enclosingTypes.remove(type);
+	}
+
 
 	@Override
 	public boolean visit(MethodDeclaration method) {
@@ -134,19 +142,21 @@ class DOMToIndexVisitor extends ASTVisitor {
 				.toArray(char[][]::new);
 		if (!method.isConstructor()) {
 			this.sourceIndexer.addMethodDeclaration(methodName, parameterTypes, returnType, exceptionTypes);
-			this.sourceIndexer.addMethodDeclaration(this.enclosingTypes.get(this.enclosingTypes.size() - 1).getName().getIdentifier().toCharArray(),
-				null /* TODO: fully qualified name of enclosing type? */,
-				methodName,
-				parameterTypes.length,
-				null,
-				parameterTypes,
-				parameterNames,
-				returnType,
-				method.getModifiers(),
-				this.packageName,
-				0 /* TODO What to put here? */,
-				exceptionTypes,
-				0 /* TODO ExtraFlags.IsLocalType ? */);
+			if (!this.enclosingTypes.isEmpty()) {
+				this.sourceIndexer.addMethodDeclaration(this.enclosingTypes.get(this.enclosingTypes.size() - 1).getName().getIdentifier().toCharArray(),
+					null /* TODO: fully qualified name of enclosing type? */,
+					methodName,
+					parameterTypes.length,
+					null,
+					parameterTypes,
+					parameterNames,
+					returnType,
+					method.getModifiers(),
+					this.packageName,
+					0 /* TODO What to put here? */,
+					exceptionTypes,
+					0 /* TODO ExtraFlags.IsLocalType ? */);
+			}
 		} else {
 			this.sourceIndexer.addConstructorDeclaration(method.getName().toString().toCharArray(),
 					method.parameters().size(),
@@ -328,7 +338,16 @@ class DOMToIndexVisitor extends ASTVisitor {
 	public boolean visit(LambdaExpression node) {
 		var binding = node.resolveMethodBinding();
 		if (binding != null) {
-			this.sourceIndexer.addMethodReference(binding.getName().toCharArray(), binding.getParameterTypes().length);
+			this.sourceIndexer.addIndexEntry(IIndexConstants.METHOD_DECL, MethodPattern.createIndexKey(binding.getName().toCharArray(), binding.getParameterTypes().length));
+
+			this.sourceIndexer.addClassDeclaration(0,  // most entries are blank, that is fine, since lambda type/method cannot be searched.
+					CharOperation.NO_CHAR,
+					IIndexConstants.ONE_ZERO,
+					IIndexConstants.ONE_ZERO_CHAR,
+					CharOperation.NO_CHAR,
+					new char[][] { binding.getDeclaringClass().getQualifiedName().toCharArray() },
+					CharOperation.NO_CHAR_CHAR,
+					true);
 		}
 		return true;
 	}
