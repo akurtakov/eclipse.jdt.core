@@ -19,6 +19,10 @@ import org.eclipse.jdt.core.compiler.CharOperation;
 import org.eclipse.jdt.core.dom.*;
 import org.eclipse.jdt.internal.core.search.matching.MethodPattern;
 
+/**
+ * Visits an AST to feed the index. Similar to {@link SourceIndexerRequestor} but using
+ * DOM instead of ECJ parser.
+ */
 class DOMToIndexVisitor extends ASTVisitor {
 
 	private SourceIndexer sourceIndexer;
@@ -297,6 +301,22 @@ class DOMToIndexVisitor extends ASTVisitor {
 //			return simpleName(qualifiedType.getName());
 //		}
 		return type.toString().toCharArray();
+	}
+
+	@Override
+	public boolean visit(NormalAnnotation annotation) {
+		this.sourceIndexer.addAnnotationTypeReference(simpleName(annotation.getTypeName()));
+		return true;
+	}
+	@Override
+	public boolean visit(MarkerAnnotation annotation) {
+		this.sourceIndexer.addAnnotationTypeReference(simpleName(annotation.getTypeName()));
+		return true;
+	}
+	@Override
+	public boolean visit(SingleMemberAnnotation annotation) {
+		this.sourceIndexer.addAnnotationTypeReference(simpleName(annotation.getTypeName()));
+		return true;
 	}
 
 	@Override
