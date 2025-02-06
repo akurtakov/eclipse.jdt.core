@@ -28,6 +28,7 @@ public class RunJavaSearchTests extends junit.framework.TestCase {
 	static {
 		// All test suites put in this list should use the same tests projects
 		// (eg. JavaSearch and JavaSearch15)
+		TEST_CLASSES.add(JavaSearchExtensionTest.class);
 		TEST_CLASSES.add(JavaSearchTests.class);
 		TEST_CLASSES.add(JavaSearchGenericTypeTests.class);
 		TEST_CLASSES.add(JavaSearchGenericTypeEquivalentTests.class);
