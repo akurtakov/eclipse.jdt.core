@@ -8823,11 +8823,34 @@ public void testJakartaAnnotationsAsDefaultSecondary() {
 			"@Retention(RetentionPolicy.RUNTIME)\n" +
 			"public @interface Nullable {\n" +
 			"}\n",
+			"javax/annotation/Nonnull.java",
+			"package javax.annotation;\n" +
+			"import static java.lang.annotation.ElementType.TYPE_USE;\n" +
+			"import java.lang.annotation.Retention;\n" +
+			"import java.lang.annotation.RetentionPolicy;\n" +
+			"import java.lang.annotation.Target;\n" +
+			"@Target(TYPE_USE)\n" +
+			"@Retention(RetentionPolicy.RUNTIME)\n" +
+			"public @interface Nonnull {\n" +
+			"}\n",
+			"javax/annotation/Nullable.java",
+			"package javax.annotation;\n" +
+			"import static java.lang.annotation.ElementType.TYPE_USE;\n" +
+			"import java.lang.annotation.Retention;\n" +
+			"import java.lang.annotation.RetentionPolicy;\n" +
+			"import java.lang.annotation.Target;\n" +
+			"@Target(TYPE_USE)\n" +
+			"@Retention(RetentionPolicy.RUNTIME)\n" +
+			"public @interface Nullable {\n" +
+			"}\n",
 			"X.java",
 			"import jakarta.annotation.Nonnull;\n" +
 			"import jakarta.annotation.Nullable;\n" +
 			"public class X {\n" +
-			"	@Nonnull String m(@Nullable String s) {\n" +
+			"	@Nonnull String mJakarta(@Nullable String s) {\n" +
+			"		return s;\n" +
+			"	}\n" +
+			"	@javax.annotation.Nonnull String mJavax(@javax.annotation.Nullable String s) {\n" +
 			"		return s;\n" +
 			"	}\n" +
 			"}\n",
@@ -8836,6 +8859,11 @@ public void testJakartaAnnotationsAsDefaultSecondary() {
 		getCompilerOptions(),
 		"----------\n" +
 		"1. ERROR in X.java (at line 5)\n" +
+		"		return s;\n" +
+		"		       ^\n" +
+		mismatch_NonNull_Nullable("String") +
+		"----------\n" +
+		"2. ERROR in X.java (at line 8)\n" +
 		"		return s;\n" +
 		"		       ^\n" +
 		mismatch_NonNull_Nullable("String") +

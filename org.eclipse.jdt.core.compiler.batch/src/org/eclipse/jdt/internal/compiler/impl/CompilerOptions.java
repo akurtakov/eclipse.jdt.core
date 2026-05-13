@@ -195,8 +195,8 @@ public class CompilerOptions {
 	static final char[][] DEFAULT_NULLABLE_ANNOTATION_NAME = CharOperation.splitOn('.', "org.eclipse.jdt.annotation.Nullable".toCharArray()); //$NON-NLS-1$
 	static final char[][] DEFAULT_NONNULL_ANNOTATION_NAME = CharOperation.splitOn('.', "org.eclipse.jdt.annotation.NonNull".toCharArray()); //$NON-NLS-1$
 	static final char[][] DEFAULT_NONNULLBYDEFAULT_ANNOTATION_NAME = CharOperation.splitOn('.', "org.eclipse.jdt.annotation.NonNullByDefault".toCharArray()); //$NON-NLS-1$
-	static final String[] DEFAULT_NULLABLE_ANNOTATION_SECONDARY_NAMES = { "jakarta.annotation.Nullable" }; //$NON-NLS-1$
-	static final String[] DEFAULT_NONNULL_ANNOTATION_SECONDARY_NAMES = { "jakarta.annotation.Nonnull" }; //$NON-NLS-1$
+	static final String[] DEFAULT_NULLABLE_ANNOTATION_SECONDARY_NAMES = { "javax.annotation.Nullable", "jakarta.annotation.Nullable" }; //$NON-NLS-1$ //$NON-NLS-2$
+	static final String[] DEFAULT_NONNULL_ANNOTATION_SECONDARY_NAMES = { "javax.annotation.Nonnull", "jakarta.annotation.Nonnull" }; //$NON-NLS-1$ //$NON-NLS-2$
 	public static final String OPTION_ReportMissingNonNullByDefaultAnnotation = "org.eclipse.jdt.core.compiler.annotation.missingNonNullByDefaultAnnotation";  //$NON-NLS-1$
 	public static final String OPTION_SyntacticNullAnalysisForFields = "org.eclipse.jdt.core.compiler.problem.syntacticNullAnalysisForFields"; //$NON-NLS-1$
 	public static final String OPTION_InheritNullAnnotations = "org.eclipse.jdt.core.compiler.annotation.inheritNullAnnotations";  //$NON-NLS-1$
