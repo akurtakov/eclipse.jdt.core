@@ -1835,7 +1835,7 @@ public final class JavaCore extends Plugin {
 	 * <dt>Option id:</dt><dd><code>"org.eclipse.jdt.core.compiler.annotation.nullable.secondary"</code></dd>
 	 * <dt>Possible values:</dt><dd>a comma-separated list of legal, fully qualified Java type names;
 	 *     each name in the list must resolve to an annotation type.</dd>
-	 * <dt>Default:</dt><dd><code>""</code></dd>
+	 * <dt>Default:</dt><dd><code>"jakarta.annotation.Nullable"</code></dd>
 	 * </dl>
 	 * @since 3.12
 	 * @category CompilerOptionID
@@ -1884,7 +1884,7 @@ public final class JavaCore extends Plugin {
 	 * <dt>Option id:</dt><dd><code>"org.eclipse.jdt.core.compiler.annotation.nonnull.secondary"</code></dd>
 	 * <dt>Possible values:</dt><dd>a comma-separated list of legal, fully qualified Java type names;
 	 *     each name in the list must resolve to an annotation type.</dd>
-	 * <dt>Default:</dt><dd><code>""</code></dd>
+	 * <dt>Default:</dt><dd><code>"jakarta.annotation.Nonnull"</code></dd>
 	 * </dl>
 	 * @since 3.12
 	 * @category CompilerOptionID
